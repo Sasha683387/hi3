@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐵</text></svg>">
 <title>40 метров тишины — премиум</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -825,7 +826,11 @@ function resetGame(){
   spawnDelay = 3;
   buddy.visible = false;
   buddyTag.style.display = "none";
-  for (const s of systems){ s.marker.visible = false; s.leak.visible = false; s.smoke.visible = false; s.warn.material.color.setHex(0x2ed573); }
+  for (const s of systems){
+    s.marker.visible = false;
+    if (s.kind === "pipe") s.leak.visible = false;
+    else { s.smoke.visible = false; s.warn.material.color.setHex(0x2ed573); }
+  }
 }
 function lockPointer(){
   if (isTouch) return;
