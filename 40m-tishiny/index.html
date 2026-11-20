@@ -51,6 +51,7 @@ let bubbles = [];
 let loud = 0, loudDisp = 0, ambient = 0.005;
 let micCtx = null, analyser = null, buf = null;
 let fx = null, fxGain = null;
+let muted = false;
 let hbTimer = 0;
 let calibT = 0, calibVals = [];
 let loseReason = "";
@@ -80,6 +81,11 @@ function initFx(){
   fxGain = fx.createGain();
   fxGain.gain.value = 0.12;
   fxGain.connect(fx.destination);
+}
+
+function toggleMute(){
+  muted = !muted;
+  if (fxGain) fxGain.gain.value = muted ? 0 : 0.12;
 }
 
 function beep(freq, dur, type){
@@ -375,9 +381,9 @@ function drawHud(){
   drawBar(710, 30, 220, 18, neighbor/100, nbColor, "СОСЕД (тишина = безопасно)");
 
   x2d.textAlign = "right";
-  x2d.fillStyle = "#9fc4d8";
+  x2d.fillStyle = muted ? "#ff4757" : "#9fc4d8";
   x2d.font = "12px 'Segoe UI'";
-  x2d.fillText("Осталось труб: " + pipes.filter(p=>p.broken).length, W - 30, 66);
+  x2d.fillText(muted ? "🔇 звук выкл (M)" : "🔊 M — звук", W - 30, 66);
 
   const mx = W/2 - 160, my = H - 60, mw = 320, mh = 20;
   drawBar(mx, my, mw, mh, loudDisp, "#ffb833", "");
@@ -478,7 +484,7 @@ function draw(){
         "Заделай все 3 трубы и не оставайся без воздуха.",
         "",
         "[ 1 ] Играть с микрофоном   [ 2 ] Играть с клавиатурой",
-        "(F — крик, S — шёпот)",
+        "(F — крик, S — шёпот, M — вкл/выкл звук)",
       ],
       "#ff4757"
     );
@@ -533,6 +539,7 @@ window.addEventListener("keydown", e => {
   } else if (state === "win" || state === "lose"){
     if (k === "r") state = "menu";
   }
+  if (k === "m") toggleMute();
   if (k === "f" || k === "s") e.preventDefault();
 });
 window.addEventListener("keyup", e => {
