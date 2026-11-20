@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>40 метров тишины — прототип</title>
+<style>
+  :root { --bg:#04070d; --panel:#0a1622; --line:#12324a; --accent:#38e0ff; --danger:#ff4757; --ok:#2ed573; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, #0a1a2e 0%, var(--bg) 60%);
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family: "Segoe UI", system-ui, sans-serif; color:#cfe9f7; padding:16px;
+  }
+  #wrap { width:min(960px, 100%); }
+  canvas { width:100%; height:auto; display:block; border-radius:12px; box-shadow:0 0 60px rgba(30,120,180,.15), inset 0 0 0 1px var(--line); }
+  .note { text-align:center; font-size:13px; color:#5f8aa3; margin-top:10px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="960" height="600"></canvas>
+  <div class="note">🎧 Играть в наушниках. Трубы чинит только твой голос: кричи — быстро, шёпи­ст — дешевле по воздуху. Если микрофона нет — жми «Играть с клавиатурой» (F — крик, S — шёпот).</div>
+</div>
+<script>
+"use strict";
+
+const cv = document.getElementById("game");
+const x2d = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+
+let state = "menu";
+let useMic = true;
+let t = 0;
+let runTime = 0;
+
+let oxygen = 100;
+let water = 0;
+let neighbor = 100;
+let flash = 0;
+let toast = "", toastT = 0;
+let shake = 0;
+
+let pipes = [];
+let currentPipe = 0;
+let allDone = false;
+
+let particles = [];
+let bubbles = [];
+
+let loud = 0, loudDisp = 0, ambient = 0.005;
+let micCtx = null, analyser = null, buf = null;
+let fx = null, fxGain = null;
+let hbTimer = 0;
+let calibT = 0, calibVals = [];
+let loseReason = "";
+
+const keys = {};
+
+function makePipes(){
+  pipes = [
+    { broken:true, progress:0, y:170 },
+    { broken:true, progress:0, y:300 },
+    { broken:true, progress:0, y:430 },
+  ];
+  currentPipe = 0;
+}
+
+function activePipe(){
+  return pipes.find(p => p.broken);
+}
+
+function toastMsg(m, dur){
+  toast = m; toastT = dur || 2.2;
+}
+
+function initFx(){
+  if (fx) return;
+  fx = new (window.AudioContext || window.webkitAudioContext)();
+  fxGain = fx.createGain();
+  fxGain.gain.value = 0.12;
+  fxGain.connect(fx.destination);
+}
+
+function beep(freq, dur, type){
+  if (!fx) return;
+  const o = fx.createOscillator();
+  const g = fx.createGain();
+  o.type = type || "sine";
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, fx.currentTime);
+  g.gain.linearRampToValueAtTime(1, fx.currentTime + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, fx.currentTime + dur);
+  o.connect(g); g.connect(fxGain);
+  o.start(); o.stop(fx.currentTime + dur + 0.05);
+}
+
+async function initMic(){
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: false } });
+  micCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = micCtx.createMediaStreamSource(stream);
+  analyser = micCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  src.connect(analyser);
+  buf = new Float32Array(analyser.fftSize);
+}
+
+function readMic(dt){
+  if (!analyser){
+    return;
+  }
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+  const rms = Math.sqrt(sum / buf.length);
+  calibVals.push(rms);
+  if (calibVals.length > 90) calibVals.shift();
+  ambient = Math.max(0.003, calibVals.reduce((a,b)=>a+b,0) / calibVals.length * 1.4);
+  const target = Math.min(1, Math.max(0, (rms - ambient) / (0.14 - ambient*0.5 + 0.01)));
+  loud += (target - loud) * Math.min(1, dt * 14);
+}
+
+function readKeys(dt){
+  let kv = 0;
+  if (keys["f"]) kv = 1;
+  else if (keys["s"]) kv = 0.28;
+  if (kv > 0 && kv >= loud) loud += (kv - loud) * Math.min(1, dt * 10);
+  else if (!analyser) loud += (kv - loud) * Math.min(1, dt * 8);
+}
+
+function startGame(mic){
+  useMic = mic;
+  oxygen = 100; water = 0; neighbor = 100;
+  runTime = 0; allDone = false;
+  makePipes();
+  particles = []; bubbles = [];
+  toastMsg("Труба лопнула! Заделай её громким голосом");
+  initFx();
+  if (mic){
+    initMic().then(() => {
+      state = "calib";
+      calibT = 0; calibVals = [];
+    }).catch(() => {
+      toastMsg("Микрофон недоступен — режим клавиатуры");
+      useMic = false;
+      state = "play";
+    });
+  } else {
+    state = "play";
+  }
+}
+
+function spawnDrops(px, py){
+  for (let i = 0; i < 3; i++){
+    particles.push({ x: px + (Math.random()-0.5)*10, y: py, vx: (Math.random()-0.5)*40, vy: 60 + Math.random()*120, life: 0.7 });
+  }
+}
+
+function spawnBubble(){
+  bubbles.push({ x: water ? Math.random()*W : 120+Math.random()*90, y: H - water*2.2, vx: (Math.random()-0.5)*15, vy: -30 - Math.random()*40, r: 2 + Math.random()*3, life: 3 });
+}
+
+function update(dt){
+  if (state === "calib"){
+    calibT += dt;
+    if (analyser) readMic(dt);
+    if (calibT > 1.2){ toastMsg("Калибровка готова. Дыши тише, чем говоришь!"); state = "play"; }
+    return;
+  }
+  if (state !== "play") return;
+
+  t += dt;
+  runTime += dt;
+
+  if (useMic && analyser) readMic(dt);
+  else if (!analyser) loud += (0 - loud) * Math.min(1, dt * 8);
+  readKeys(dt);
+
+  loudDisp += (loud - loudDisp) * Math.min(1, dt * 10);
+
+  const ap = activePipe();
+  let oxyExtra = 0;
+
+  if (ap && !allDone){
+    if (loud > 0.04){
+      const shouty = loud > 0.35;
+      const rate = shouty ? 16 * loud * loud : 2.4;
+      const before = Math.floor(ap.progress / 10);
+      ap.progress += rate * dt;
+      const after = Math.floor(ap.progress / 10);
+      if (after > before){ beep(500 + after*30, 0.08, "square"); for(let i=0;i<after-before;i++) spawnBubble(); }
+      oxyExtra += shouty ? 7 * loud * loud : 1.4;
+      spawnDrops(660 + 40, ap.y);
+      if (ap.progress >= 100){
+        ap.broken = false;
+        oxygen = Math.min(100, oxygen + 30);
+        water = Math.max(0, water - 25);
+        currentPipe++;
+        beep(880, 0.25); setTimeout(()=>beep(1170, 0.3), 140);
+        if (!activePipe()){
+          allDone = true;
+          toastMsg("Все трубы заделаны! Держи воздух для всплытия...", 3);
+          setTimeout(() => { if (state === "play") winGame(); }, 2600);
+        } else {
+          toastMsg("Труба заделана: +30 воздуха", 2);
+        }
+      }
+    }
+    water += 2.4 * dt;
+  }
+
+  oxygen -= (0.7 + oxyExtra) * dt;
+
+  if (loud > 0.45) neighbor -= (loud - 0.4) * 6 * dt;
+  else if (loud < 0.2 && !ap) neighbor += 1.2 * dt;
+  neighbor = Math.max(0, Math.min(100, neighbor));
+
+  if (neighbor < 45){
+    hbTimer -= dt;
+    if (hbTimer <= 0){ beep(70, 0.15, "sine"); hbTimer = 0.5 + neighbor/100; }
+  }
+
+  for (const p of particles){
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 500 * dt; p.life -= dt;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  for (const b of bubbles){
+    b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+  }
+  bubbles = bubbles.filter(b => b.life > 0 && b.y > -10);
+
+  if (Math.random() < 0.15) spawnBubble();
+
+  flash = Math.max(0, flash - dt * 3);
+  shake = Math.max(0, shake - dt * 20);
+  toastT = Math.max(0, toastT - dt);
+
+  if (oxygen <= 0) loseGame("ВОЗДУХ КОНЧИЛСЯ");
+  else if (water >= 100) loseGame("ОТСЕК ЗАТОПИЛО");
+  else if (neighbor <= 0) loseGame("ОНО ТЕБЯ НАШЛО");
+}
+
+function winGame(){
+  state = "win";
+  beep(660, 0.2); setTimeout(()=>beep(880,0.2),150); setTimeout(()=>beep(1320,0.4),300);
+}
+
+function loseGame(reason){
+  state = "lose";
+  loseReason = reason;
+  flash = 1; shake = 1;
+  beep(110, 0.7, "sawtooth");
+}
+
+function roundRect(x, y, w, h, r){
+  x2d.beginPath();
+  x2d.moveTo(x + r, y);
+  x2d.arcTo(x + w, y, x + w, y + h, r);
+  x2d.arcTo(x + w, y + h, x, y + h, r);
+  x2d.arcTo(x, y + h, x, y, r);
+  x2d.arcTo(x, y, x + w, y, r);
+  x2d.closePath();
+}
+
+function drawBar(x, y, w, h, val, color, label, back){
+  x2d.fillStyle = back || "rgba(255,255,255,0.08)";
+  roundRect(x, y, w, h, h/2); x2d.fill();
+  if (val > 0){
+    x2d.fillStyle = color;
+    roundRect(x, y, Math.max(h, w * Math.min(1,val)), h, h/2); x2d.fill();
+  }
+  x2d.fillStyle = "#9fc4d8";
+  x2d.font = "12px 'Segoe UI'";
+  x2d.textAlign = "left";
+  x2d.fillText(label, x, y - 6);
+}
+
+function drawPipe(p, idx){
+  const panelX = 620, panelW = 300;
+  const pipeY = p.y;
+  const isCurrent = activePipe() === p;
+
+  x2d.fillStyle = "#2a4d63";
+  roundRect(panelX, pipeY - 16, panelW, 32, 8); x2d.fill();
+  x2d.fillStyle = "#1b394d";
+  for (let i = 0; i < 5; i++){
+    roundRect(panelX + 30 + i*56, pipeY - 20, 14, 40, 3); x2d.fill();
+  }
+
+  x2d.strokeStyle = "#7ee0ff";
+  x2d.lineWidth = 3;
+  x2d.beginPath();
+  x2d.arc(panelX + panelW - 40, pipeY, 14, 0, Math.PI*2);
+  x2d.stroke();
+  x2d.beginPath();
+  x2d.moveTo(panelX + panelW - 54, pipeY);
+  x2d.lineTo(panelX + panelW - 26, pipeY);
+  x2d.stroke();
+
+  if (isCurrent){
+    const glow = 0.5 + 0.5 * Math.sin(t * 6);
+    x2d.strokeStyle = `rgba(255,71,87,${0.5 + glow*0.5})`;
+    x2d.lineWidth = 4;
+    roundRect(panelX - 6, pipeY - 24, panelW + 12, 48, 10); x2d.stroke();
+    drawBar(panelX, pipeY + 32, panelW - 80, 12, p.progress / 100, p.progress > 70 ? "#2ed573" : "#ffbb33", "", "rgba(0,0,0,0.35)");
+    x2d.fillStyle = "#cfe9f7";
+    x2d.font = "12px 'Segoe UI'";
+    x2d.textAlign = "left";
+    x2d.fillText(Math.floor(p.progress) + "%", panelX + panelW - 70, pipeY + 43);
+  } else if (!p.broken){
+    x2d.fillStyle = "#2ed573";
+    x2d.font = "14px 'Segoe UI'";
+    x2d.fillText("✓", panelX - 20, pipeY + 5);
+  } else {
+    x2d.fillStyle = "#cfe9f7";
+    x2d.font = "13px 'Segoe UI'";
+    x2d.fillText("• ждёт", panelX - 52, pipeY + 5);
+  }
+}
+
+function drawRoom(){
+  const g = x2d.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#0c1e30");
+  g.addColorStop(1, "#060d17");
+  x2d.fillStyle = g;
+  x2d.fillRect(0, 0, W, H);
+
+  x2d.strokeStyle = "rgba(120,180,220,0.08)";
+  x2d.lineWidth = 2;
+  for (let i = 0; i < 8; i++){
+    x2d.beginPath();
+    x2d.arc(60 + (i%4)*280, 60 + Math.floor(i/4)*480, 8, 0, Math.PI*2);
+    x2d.stroke();
+  }
+
+  x2d.fillStyle = "#0a1520";
+  roundRect(600, 120, 340, 380, 14); x2d.fill();
+  x2d.strokeStyle = "#12324a"; x2d.lineWidth = 2;
+  roundRect(600, 120, 340, 380, 14); x2d.stroke();
+  x2d.fillStyle = "#5f8aa3";
+  x2d.font = "13px 'Segoe UI'";
+  x2d.fillText("ОТСЕК ДАВЛЕНИЯ", 620, 108);
+
+  pipes.forEach((p, i) => drawPipe(p, i));
+}
+
+function drawWater(){
+  if (water <= 0) return;
+  const wh = water * 2.2 * (H/60);
+  const top = H - Math.min(wh, H);
+  x2d.fillStyle = "rgba(30,120,190,0.45)";
+  x2d.beginPath();
+  x2d.moveTo(0, H);
+  for (let x2 = 0; x2 <= W; x2 += 20){
+    x2d.lineTo(x2, top + Math.sin(x2/60 + t*2)*5);
+  }
+  x2d.lineTo(W, H);
+  x2d.closePath();
+  x2d.fill();
+  x2d.strokeStyle = "rgba(120,210,255,0.5)";
+  x2d.lineWidth = 2;
+  x2d.beginPath();
+  for (let x2 = 0; x2 <= W; x2 += 20){
+    const y2 = top + Math.sin(x2/60 + t*2)*5;
+    if (x2 === 0) x2d.moveTo(x2, y2); else x2d.lineTo(x2, y2);
+  }
+  x2d.stroke();
+}
+
+function drawHud(){
+  drawBar(30, 30, 220, 18, oxygen/100, oxygen < 30 ? "#ff4757" : "#38e0ff", "ВОЗДУХ");
+
+  const nbColor = neighbor < 30 ? "#ff4757" : (neighbor < 60 ? "#ffbb33" : "#2ed573");
+  drawBar(710, 30, 220, 18, neighbor/100, nbColor, "СОСЕД (тишина = безопасно)");
+
+  x2d.textAlign = "right";
+  x2d.fillStyle = "#9fc4d8";
+  x2d.font = "12px 'Segoe UI'";
+  x2d.fillText("Осталось труб: " + pipes.filter(p=>p.broken).length, W - 30, 66);
+
+  const mx = W/2 - 160, my = H - 60, mw = 320, mh = 20;
+  drawBar(mx, my, mw, mh, loudDisp, "#ffb833", "");
+  x2d.strokeStyle = "rgba(255,71,87,0.7)";
+  x2d.lineWidth = 2;
+  x2d.beginPath();
+  x2d.moveTo(mx + mw*0.45, my - 4);
+  x2d.lineTo(mx + mw*0.45, my + mh + 4);
+  x2d.stroke();
+  x2d.fillStyle = "#9fc4d8";
+  x2d.font = "12px 'Segoe UI'";
+  x2d.textAlign = "center";
+  x2d.fillText("ГРОМКОСТЬ", mx + mw/2, my - 6);
+  x2d.textAlign = "left";
+  x2d.fillText("шёпот", mx, my + mh + 16);
+  x2d.textAlign = "right";
+  x2d.fillText("КРИЧИ!", mx + mw, my + mh + 16);
+
+  let obj = "";
+  const ap = activePipe();
+  if (allDone) obj = "Всплываем...";
+  else if (ap && neighbor < 30) obj = "ОНО СЛУШАЕТ — но труба не заделается сама...";
+  else if (ap && ap.progress > 0 && ap.progress < 10) obj = "Говори громче!";
+  else if (ap) obj = "Кричи на трубу! (шёпот — медленно, но дёшево)";
+  else obj = "";
+  if (obj){
+    x2d.fillStyle = "rgba(207,233,247,0.9)";
+    x2d.font = "15px 'Segoe UI'";
+    x2d.textAlign = "center";
+    x2d.fillText(obj, W/2, 90);
+  }
+
+  if (toastT > 0){
+    x2d.fillStyle = `rgba(56,224,255,${Math.min(1, toastT)})`;
+    x2d.font = "16px 'Segoe UI'";
+    x2d.textAlign = "center";
+    x2d.fillText(toast, W/2, 120);
+  }
+}
+
+function drawParticles(){
+  x2d.fillStyle = "rgba(120,210,255,0.8)";
+  for (const p of particles){
+    x2d.globalAlpha = p.life;
+    x2d.beginPath();
+    x2d.ellipse(p.x, p.y, 3, 7, 0, 0, Math.PI*2);
+    x2d.fill();
+  }
+  x2d.globalAlpha = 1;
+  x2d.strokeStyle = "rgba(150,220,255,0.5)";
+  for (const b of bubbles){
+    x2d.globalAlpha = Math.min(1, b.life);
+    x2d.beginPath();
+    x2d.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    x2d.stroke();
+  }
+  x2d.globalAlpha = 1;
+}
+
+function drawOverlayScreen(title, subtitle, lines, color){
+  x2d.fillStyle = "rgba(3,8,14,0.82)";
+  x2d.fillRect(0, 0, W, H);
+  x2d.textAlign = "center";
+  x2d.fillStyle = color;
+  x2d.font = "bold 44px 'Segoe UI'";
+  x2d.fillText(title, W/2, 200);
+  x2d.fillStyle = "#cfe9f7";
+  x2d.font = "17px 'Segoe UI'";
+  x2d.fillText(subtitle, W/2, 250);
+  x2d.font = "14px 'Segoe UI'";
+  x2d.fillStyle = "#9fc4d8";
+  lines.forEach((l, i) => x2d.fillText(l, W/2, 300 + i * 26));
+}
+
+function draw(){
+  x2d.save();
+  if (shake > 0){
+    x2d.translate((Math.random()-0.5) * shake * 14, (Math.random()-0.5) * shake * 14);
+  }
+  drawRoom();
+  drawWater();
+  drawParticles();
+
+  if (neighbor < 45){
+    x2d.fillStyle = `rgba(120,0,10,${(1 - neighbor/45) * 0.35})`;
+    x2d.fillRect(0, 0, W, H);
+  }
+
+  if (state === "menu"){
+    drawOverlayScreen(
+      "40 МЕТРОВ ТИШИНЫ",
+      "прототип механики «голос-инструмент» — соло-версия",
+      [
+        "Труба лопнула. Заделать её может только твой ГОЛОС.",
+        "Кричишь громче — труба чинится быстрее, но:",
+        "• голос жжёт кислород в ~10 раз быстрее",
+        "• громкий звук будит СОСЕДА — он плывёт на шум",
+        "Заделай все 3 трубы и не оставайся без воздуха.",
+        "",
+        "[ 1 ] Играть с микрофоном   [ 2 ] Играть с клавиатурой",
+        "(F — крик, S — шёпот)",
+      ],
+      "#ff4757"
+    );
+  } else if (state === "calib"){
+    drawOverlayScreen(
+      "КАЛИБРОВКА",
+      "Помолчи 1-2 секунды...",
+      ["Измеряю шум твоей комнаты"],
+      "#38e0ff"
+    );
+  } else if (state === "win"){
+    drawOverlayScreen(
+      "ВСПЛЫТИЕ!",
+      "Трубы заделаны, воздух остался.",
+      ["Время: " + runTime.toFixed(1) + " с", "Остаток воздуха: " + Math.max(0,Math.round(oxygen)) + "%", "", "[ R ] игрaть снова"],
+      "#2ed573"
+    );
+  } else if (state === "lose"){
+    drawOverlayScreen(
+      loseReason,
+      "Молчание важнее было. Или наоборот.",
+      ["Продержался: " + runTime.toFixed(1) + " с", "Труб заделано: " + pipes.filter(p=>!p.broken).length + "/3", "", "[ R ] попробовать снова"],
+      "#ff4757"
+    );
+  } else {
+    drawHud();
+  }
+
+  if (flash > 0){
+    x2d.fillStyle = `rgba(255,80,80,${flash*0.5})`;
+    x2d.fillRect(0, 0, W, H);
+  }
+  x2d.restore();
+}
+
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+window.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (state === "menu"){
+    if (k === "1") startGame(true);
+    if (k === "2") startGame(false);
+  } else if (state === "win" || state === "lose"){
+    if (k === "r") state = "menu";
+  }
+  if (k === "f" || k === "s") e.preventDefault();
+});
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+</script>
+</body>
+</html>
