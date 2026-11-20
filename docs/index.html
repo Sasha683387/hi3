@@ -72,7 +72,7 @@
   .tbtn.mini { width:58px; height:58px; font-size:20px; border-radius:16px; }
   .tbtn.hot { background:rgba(255,71,87,.5); border-color:#ff8787; }
   #runBtn.hot { background:rgba(45,213,123,.4); border-color:#7ffd9a; }
-  #joyBase, #runBtn { pointer-events:none; }
+  #joyBase { pointer-events:none; }
   @media (max-width:640px){
     #topLeft,#topRight { width:32vw; }
     .panel { padding:22px 16px; }
@@ -741,7 +741,7 @@ function joinRoom(code, useMicWanted){
     conn.on("data", d => {
       if (!d) return;
       if (d.t === "st" && ["play","calib"].includes(S.val)){
-        oxygen = d.o; water = d.w; noise = d.n; neighborD = d.d; runTime = d.t;
+        oxygen = d.o; water = d.w; noise = d.n; neighborD = d.d; runTime = d.tm || 0;
         net.buddyPos = d.p || { x: 0, z: 4.5, ry: 0 };
         if (d.f !== undefined && d.f !== fixedCount){ fixedCount = d.f; drawSysList(); }
         systems.forEach((s, i) => {
@@ -829,16 +829,20 @@ function resetGame(){
 }
 function lockPointer(){
   if (isTouch) return;
-  if (renderer.domElement.requestPointerLock) renderer.domElement.requestPointerLock();
+  try {
+    const p = renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock();
+    if (p && p.catch) p.catch(() => {});
+  } catch(e){}
 }
 function beginRun(useMicWanted, isHost){
   useMic = useMicWanted;
   initAudio();
   resetGame();
+  S.val = "play";
   showHud(true);
+  ui.touchUI.style.display = isTouch ? "block" : "none";
   ui.netPill.style.display = net.active ? "block" : "none";
   ui.netPill.textContent = "КОМНАТА " + net.code + (isHost ? " · ты хост" : "");
-  S.val = "play";
   if (isTouch && !document.fullscreenElement){
     document.getElementById("wrap").requestFullscreen().catch(() => {});
   }
@@ -1006,7 +1010,7 @@ function update(dt){
   if (keys.a || keys.arrowleft) dx -= 1;
   if (keys.d || keys.arrowright) dx += 1;
   const stickLen = Math.hypot(touchState.moveX, touchState.moveZ);
-  if (stickLen > 0.14){ dx = touchState.moveX; dz = -touchState.moveZ; }
+  if (stickLen > 0.14){ dx = touchState.moveX; dz = touchState.moveZ; }
   const run = keys.shift === true || touchState.run;
   moving = dx !== 0 || dz !== 0;
   if (moving){
@@ -1038,7 +1042,10 @@ function update(dt){
 
   if (net.mode !== "guest"){
     const duet = !!(repLocal && net.active && net.gRep && net.guestL > 0.04 && nextSystem() === active);
-    if (repLocal) applyStep(active, loud, dt, duet ? 1.7 : 1, true);
+    if (repLocal){
+      const doneLocal = applyStep(active, loud, dt, duet ? 1.7 : 1, true);
+      if (doneLocal) finishSystem(active);
+    }
     if (net.active && net.gRep && net.guestL > 0.04){
       const gs = nextSystem();
       const done = applyStep(gs, net.guestL, dt, repLocal ? 0.65 : 1, false);
@@ -1114,7 +1121,7 @@ function update(dt){
     if (net.mode === "host" && net.active){
       netSend({ t: "st", o: oxygen, w: water, n: noise, d: neighborD, t2: runTime, f: fixedCount,
         p: { x: playerPos.x, z: playerPos.z, ry: yaw },
-        s: systems.map(s => [s.broken ? 1 : 0, Math.round(s.progress * 10) / 10]) });
+        s: systems.map(s => [s.broken ? 1 : 0, Math.round(s.progress * 10) / 10]), tm: runTime });
     } else if (net.mode === "guest" && net.active){
       netSend({ t: "in", l: loud, r: repLocal, x: playerPos.x, z: playerPos.z, ry: yaw, rn: moving && run });
     }
