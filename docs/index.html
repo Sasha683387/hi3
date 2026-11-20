@@ -1,0 +1,2083 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐵</text></svg>">
+<title>40 метров тишины — премиум</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#020509; touch-action:none; overscroll-behavior:none; }
+  body { font-family:"Segoe UI", system-ui, sans-serif; color:#cfe9f7; user-select:none; -webkit-user-select:none; }
+  #wrap { position:absolute; inset:0; }
+  .hbar { position:relative; height:14px; border-radius:7px; background:rgba(255,255,255,.07); overflow:hidden; box-shadow:inset 0 0 6px rgba(0,0,0,.6); }
+  .hbar > i { display:block; height:100%; border-radius:7px; transition:width .06s linear; }
+  .hudlab { font-size:10px; letter-spacing:.22em; color:#7ea6bd; margin-bottom:4px; text-shadow:0 1px 3px #000; }
+  #topLeft { position:absolute; left:18px; top:16px; width:min(300px,34vw); }
+  #oxygenFill { background:linear-gradient(90deg,#2ad4ff,#7ff0ff); }
+  #topRight { position:absolute; right:18px; top:16px; width:min(300px,34vw); text-align:right; }
+  #noiseFill { background:linear-gradient(90deg,#2ed573,#ffd93d,#ff4757); margin-left:auto; }
+  #topCenter { position:absolute; top:14px; left:50%; transform:translateX(-50%); text-align:center; width:min(620px,86vw); }
+  #objective { font-size:14px; color:rgba(220,240,252,.95); text-shadow:0 2px 8px #000; }
+  #toast { margin-top:6px; font-size:14px; color:#4de3ff; text-shadow:0 0 12px rgba(77,227,255,.5); min-height:18px; }
+  #timerEl { margin-top:4px; font-size:12px; color:#7ea6bd; letter-spacing:.15em; }
+  #crosshair { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; }
+  #crosshair .dot { width:4px; height:4px; border-radius:50%; background:#cfe9f7; opacity:.85; }
+  #crosshair .ring { width:34px; height:34px; border:1.5px solid rgba(160,220,250,.4); border-radius:50%; position:absolute; left:-15px; top:-15px; transition:border-color .15s; }
+  #crosshair.hot .ring { border-color:#ffd93d; box-shadow:0 0 14px rgba(255,217,61,.5); }
+  #actHint { position:absolute; left:50%; top:56%; transform:translateX(-50%); font-size:13px; letter-spacing:.1em; color:#ffd93d; text-shadow:0 1px 6px #000; opacity:0; transition:opacity .15s; text-align:center; }
+  #actHint.on { opacity:1; }
+  #loudBox { position:absolute; bottom:26px; left:50%; transform:translateX(-50%); width:min(400px,72vw); text-align:center; }
+  #loudWrap { height:14px; }
+  #loudFill { background:linear-gradient(90deg,#2ad4ff,#ffd93d 35%,#ffd93d 65%,#ff4757); }
+  #loudZones { display:flex; justify-content:space-between; font-size:9px; color:#5f8aa3; margin-top:3px; letter-spacing:.12em; }
+  .loudHost { position:relative; }
+  #loudMark { position:absolute; top:-4px; bottom:-4px; left:35%; width:2px; background:rgba(255,71,87,.85); }
+  #loudZoneName { font-size:11px; letter-spacing:.2em; margin-bottom:5px; color:#4de3ff; }
+  #sysList { position:absolute; left:18px; bottom:26px; font-size:11px; color:#7ea6bd; line-height:1.75; text-shadow:0 1px 3px #000; }
+  #sysList b { color:#cfe9f7; font-weight:600; }
+  #sysList .ok { color:#2ed573; }
+  #sysList .bad { color:#ff6b6b; }
+  #buttons { position:absolute; top:12px; right:18px; display:flex; gap:8px; z-index:5; }
+  #buttons button { background:rgba(8,18,28,.75); color:#9fc4d8; border:1px solid rgba(70,130,170,.35); border-radius:9px; padding:7px 11px; font-size:13px; cursor:pointer; backdrop-filter:blur(6px); }
+  #buttons button:hover { border-color:#4de3ff; color:#4de3ff; }
+  #buttons button.off { color:#ff4757; border-color:rgba(255,71,87,.5); }
+  #vign { position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity .25s; background:radial-gradient(ellipse at center, transparent 35%, rgba(120,0,10,.6) 100%); }
+  #waterTint { position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(to top, rgba(20,90,160,.5), transparent 45%); }
+  #netPill { position:absolute; top:60px; left:50%; transform:translateX(-50%); font-size:11px; letter-spacing:.15em; color:#7ff0ff; background:rgba(10,26,44,.65); border:1px solid rgba(90,200,255,.3); border-radius:20px; padding:5px 14px; display:none; text-shadow:0 1px 4px #000; }
+  .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(1100px 640px at 50% 24%, rgba(18,44,74,.9), rgba(2,5,10,.97) 76%), radial-gradient(520px 320px at 84% 90%, rgba(18,58,108,.36), transparent 70%); backdrop-filter:blur(6px); z-index:6; overflow-y:auto; }
+  @keyframes panelIn { from { opacity:0; transform:translateY(16px) scale(.98); } to { opacity:1; transform:none; } }
+  @keyframes titleShift { 0%,100% { background-position:0% 50%; } 50% { background-position:100% 50%; } }
+  @keyframes glowPulse { 0%,100% { box-shadow:0 0 60px rgba(40,150,230,.15), inset 0 1px 0 rgba(170,225,255,.14); } 50% { box-shadow:0 0 96px rgba(60,180,255,.27), inset 0 1px 0 rgba(170,225,255,.22); } }
+  .panel { text-align:center; max-width:680px; width:min(680px,92vw); padding:36px 40px 30px; border-radius:24px; position:relative; background:linear-gradient(165deg, rgba(16,36,58,.84), rgba(5,12,22,.9) 68%); border:1px solid rgba(106,196,246,.32); animation:panelIn .35s ease-out, glowPulse 4.5s ease-in-out infinite; }
+  .panel::before { content:""; position:absolute; top:0; left:10%; right:10%; height:1px; border-radius:1px; background:linear-gradient(90deg, transparent, rgba(150,222,255,.5), transparent); pointer-events:none; }
+  .panel h1 { font-size:40px; letter-spacing:.08em; margin-bottom:10px; background:linear-gradient(90deg,#7ff0ff,#eaf6ff 30%,#ffd93d 62%,#7ff0ff); background-size:220% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:titleShift 6s ease-in-out infinite; filter:drop-shadow(0 0 20px rgba(90,200,255,.3)); }
+  .panel .sub { color:#9cc4da; font-size:13px; letter-spacing:.3em; text-transform:uppercase; margin-bottom:16px; }
+  .panel p { color:#a9c9dc; font-size:13.5px; line-height:1.65; margin-bottom:14px; }
+  .panel .keys { color:#cfe9f7; font-size:12.5px; line-height:1.9; }
+  .panel .keys b { color:#ffd93d; font-weight:600; }
+  .btns { display:flex; gap:12px; margin-top:18px; flex-wrap:wrap; justify-content:center; }
+  .btns.vertical { flex-direction:column; align-items:stretch; }
+  .panel button { background:linear-gradient(160deg, rgba(24,56,86,.95), rgba(10,26,44,.95)); color:#8ff0ff; border:1px solid rgba(106,196,246,.45); border-radius:14px; padding:14px 26px; font-size:15px; letter-spacing:.06em; cursor:pointer; transition:transform .15s, box-shadow .2s, border-color .2s, background .2s; box-shadow:0 4px 18px rgba(0,10,20,.35), 0 0 22px rgba(42,212,255,.08); }
+  .panel button:hover { transform:translateY(-2px); border-color:#8ff0ff; background:linear-gradient(160deg, rgba(36,80,120,.95), rgba(16,40,66,.95)); box-shadow:0 8px 28px rgba(0,10,20,.45), 0 0 34px rgba(42,212,255,.3); }
+  .panel button:active { transform:translateY(0) scale(.985); }
+  .panel button.mini { padding:9px 18px; font-size:13px; border-radius:11px; }
+  .panel input { background:rgba(3,10,18,.92); border:1px solid rgba(106,196,246,.45); border-radius:12px; color:#8ff0ff; font-size:24px; letter-spacing:.4em; text-align:center; padding:12px 8px; width:210px; text-transform:uppercase; outline:none; transition:.2s; box-shadow:inset 0 2px 12px rgba(0,0,0,.5); }
+  .panel input:focus { border-color:#8ff0ff; box-shadow:0 0 22px rgba(42,212,255,.35), inset 0 2px 12px rgba(0,0,0,.5); }
+  .sensrow { display:flex; align-items:center; gap:10px; justify-content:center; color:#8fb4ca; font-size:12px; margin-top:12px; }
+  .sensrow input[type=range] { width:170px; accent-color:#2ad4ff; }
+  .lobbyRow { display:flex; align-items:center; gap:10px; justify-content:center; background:rgba(3,10,18,.7); border:1px solid rgba(106,196,246,.35); border-radius:12px; padding:9px 14px; margin:6px auto; max-width:300px; cursor:pointer; color:#8ff0ff; font-size:14px; letter-spacing:.05em; transition:.15s; }
+  .lobbyRow:hover { border-color:#8ff0ff; background:rgba(20,50,78,.75); transform:translateY(-1px); }
+  .lobbyRow .rrole { color:#7ea6bd; font-size:11px; } 
+  #lobbyRows { max-width:340px; margin:0 auto; }
+  #codeShow { font-size:44px; letter-spacing:.35em; color:#ffd93d; text-shadow:0 0 24px rgba(255,217,61,.4); margin:12px 0; font-weight:700; }
+  .hidden { display:none !important; }
+  .ctrlgrid { display:grid; grid-template-columns:auto auto; gap:4px 14px; text-align:left; font-size:12.5px; color:#a9c9dc; line-height:1.7; margin:14px auto; width:fit-content; }
+  .ctrlgrid b { color:#ffd93d; font-weight:600; text-align:right; }
+  #touchUI { position:absolute; inset:0; z-index:4; pointer-events:none; display:none; }
+  #joyBase { position:absolute; width:118px; height:118px; border-radius:50%; border:2px solid rgba(127,240,255,.35); background:rgba(10,26,44,.3); left:26px; bottom:26px; }
+  #joyKnob { position:absolute; width:52px; height:52px; border-radius:50%; background:rgba(127,240,255,.5); border:2px solid rgba(190,240,255,.7); left:33px; top:33px; }
+  .tbtns { position:absolute; right:20px; bottom:110px; display:flex; flex-direction:column; gap:14px; pointer-events:auto; }
+  .tbtn { width:78px; height:78px; border-radius:50%; border:2px solid rgba(127,240,255,.5); background:rgba(10,26,44,.55); color:#cfe9f7; font-size:30px; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+  .tbtn.mini { width:58px; height:58px; font-size:20px; border-radius:16px; }
+  .tbtn.hot { background:rgba(255,71,87,.5); border-color:#ff8787; }
+  #runBtn.hot { background:rgba(45,213,123,.4); border-color:#7ffd9a; }
+  #joyBase { pointer-events:none; }
+  @media (max-width:640px){
+    #topLeft,#topRight { width:32vw; }
+    .panel { padding:22px 16px; }
+    .panel h1 { font-size:26px; }
+    .panel p { font-size:12px; }
+    .panel .keys { font-size:11px; }
+    #sysList { font-size:10px; bottom:110px; }
+    #loudBox { bottom:34px; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="waterTint"></div>
+  <div id="vign"></div>
+  <div id="crosshair"><div class="ring"></div><div class="dot"></div></div>
+  <div id="actHint"></div>
+  <div id="topLeft" style="display:none">
+    <div class="hudlab">ВОЗДУХ</div>
+    <div class="hbar"><i id="oxygenFill" style="width:100%"></i></div>
+  </div>
+  <div id="topRight" style="display:none">
+    <div class="hudlab">ВНИМАНИЕ СОСЕДА</div>
+    <div class="hbar"><i id="noiseFill" style="width:0%"></i></div>
+  </div>
+  <div id="topCenter" style="display:none">
+    <div id="objective"></div>
+    <div id="toast"></div>
+    <div id="timerEl"></div>
+  </div>
+  <div id="netPill"></div>
+  <div id="loudBox" style="display:none">
+    <div class="hudlab" style="text-align:center">ТВОЙ ГОЛОС</div>
+    <div id="loudZoneName">ТИХО</div>
+    <div class="loudHost">
+      <div id="loudWrap" class="hbar"><i id="loudFill" style="width:0%"></i></div>
+      <div id="loudMark"></div>
+    </div>
+    <div id="loudZones"><span>ШЁПОТ</span><span>КРИК →</span></div>
+  </div>
+  <div id="sysList" style="display:none"></div>
+  <div id="buttons" style="display:none">
+    <button id="helpBtn" title="H">?</button>
+    <button id="musicBtn" title="B">🎵</button>
+    <button id="muteBtn" title="M">&#128266;</button>
+    <button id="fsBtn" title="G">&#9974;</button>
+    <button id="pauseBtn" title="P">&#10073;&#10073;</button>
+  </div>
+  <div id="touchUI">
+    <div id="joyBase"><div id="joyKnob"></div></div>
+    <div class="tbtns">
+      <button class="tbtn" id="runBtn">🏃</button>
+      <button class="tbtn" id="whisperBtn">🤫</button>
+      <button class="tbtn" id="shoutBtn">💥</button>
+    </div>
+  </div>
+  <div id="menu" class="overlay">
+    <div class="panel" id="menuPanel">
+      <h1>40 МЕТРОВ ТИШИНЫ</h1>
+      <div class="sub">глубина 40 м · света мало · воздуха меньше</div>
+      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v9 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
+      <p>Системы лодки сыпятся одна за другой. Чинить можно <b>голосом</b>: чем громче — тем быстрее.
+         Но голос жжёт кислород, а шум копит <b>внимание Соседа</b>.<br>
+         Трубы любят <b>крик</b>. Электрощитки — <b>только шёпот</b>: закричишь — искры и откат.</p>
+      <div class="sensrow"><span>Чувствительность микрофона</span><input type="range" id="sensSlider" min="0.6" max="2.6" step="0.05" value="1.25"><b id="sensVal" style="color:#7ff0ff">1.25</b></div>
+      <div class="btns vertical" id="menuModes">
+        <button id="btnSolo">🚤 ОДИНОЧНАЯ ИГРА</button>
+        <button id="btnHost">📡 СОЗДАТЬ КОМНАТУ (2 игрока)</button>
+        <button id="btnJoin">🔗 ПОДКЛЮЧИТЬСЯ К ДРУГУ</button>
+        <button id="btnLobbyList">📋 ЛОББИ (мои комнаты)</button>
+        <button id="btnGlobalLobby">🌐 СЕРВЕРЫ (ждут партера)</button>
+      </div>
+      <div class="btns vertical hidden" id="voicePick">
+        <button id="btnMic">🎙 Играть с микрофоном</button>
+        <button id="btnKeys">⌨ Без микрофона (клавиши F / V)</button>
+        <button class="mini" id="voiceBack">← назад</button>
+      </div>
+      <div class="hidden" id="joinBox">
+        <div class="keys" style="margin-bottom:10px">Введи код комнаты друга:</div>
+        <input id="codeInput" maxlength="4" placeholder="XXXX" autocomplete="off">
+        <div class="btns"><button id="btnJoinGo">Подключиться</button><button class="mini" id="joinBack">← назад</button></div>
+      </div>
+      <div class="btns vertical hidden" id="lobbyListPanel">
+        <div class="keys">Мои комнаты на этом устройстве:</div>
+        <div id="lobbyRows"></div>
+        <button class="mini" id="lobbyListBack">← назад</button>
+      </div>
+      <div class="btns vertical hidden" id="serverPanel">
+        <div class="keys">🌐 Живые комнаты — игроки, которые сейчас ждут партера:</div>
+        <div id="serverRows"></div>
+        <div class="btns"><button class="mini" id="serverRefresh">🔄 обновить</button><button class="mini" id="serverMine">📋 мои</button><button class="mini" id="serverBack">← назад</button></div>
+      </div>
+      <div class="ctrlgrid">
+        <b>WASD / стрелки</b><span>идти · <b style="color:#ffd93d">Shift</b> — бежать (шумно!)</span>
+        <b>мышь</b><span>смотреть (на телефоне — левый джойстик, свайп справа)</span>
+        <b>F</b><span>громкий крик без микрофона · <b>V</b> — шёпот</span>
+        <b>M</b><span>звук · <b>B</b> — лоу-фай · <b>H</b> — управление · <b>G</b> — на весь экран · <b>Esc/P</b> — пауза</span>
+      </div>
+    </div>
+  </div>
+  <div id="lobby" class="overlay hidden">
+    <div class="panel">
+      <h1 style="font-size:26px" id="lobbyTitle">КОМНАТА</h1>
+      <div id="codeShow">····</div>
+      <p id="lobbyMsg">Открываю комнату...</p>
+      <div class="btns"><button class="mini" id="lobbyCancel">Отмена</button></div>
+    </div>
+  </div>
+  <div id="calib" class="overlay hidden">
+    <div class="panel">
+      <h1 style="font-size:26px">КАЛИБРОВКА</h1>
+      <p>Помолчи пару секунд — измеряю шум комнаты...</p>
+    </div>
+  </div>
+  <div id="pause" class="overlay hidden">
+    <div class="panel">
+      <h1 style="font-size:26px">ПАУЗА</h1>
+      <p>Кислород умеет ждать. Сосед — тоже.</p>
+      <div class="sensrow"><span>Чувствительность микрофона</span><input type="range" id="sensSlider2" min="0.6" max="2.6" step="0.05" value="1.25"><b id="sensVal2" style="color:#7ff0ff">1.25</b></div>
+      <div class="btns"><button id="resumeBtn">Продолжить</button><button class="mini" id="pauseMenuBtn">В меню</button></div>
+    </div>
+  </div>
+  <div id="help" class="overlay hidden">
+    <div class="panel">
+      <h1 style="font-size:26px">УПРАВЛЕНИЕ</h1>
+      <div class="ctrlgrid">
+        <b>WASD / стрелки / джойстик</b><span>идти</span>
+        <b>Shift / 🏃</b><span>бежать — быстрее, но шумно</span>
+        <b>мышь / свайп справа</b><span>смотреть по сторонам</span>
+        <b>голос</b><span>ремонт, когда смотришь на систему рядом</span>
+        <b>F (держать)</b><span>изобразить крик без микрофона</span>
+        <b>V (держать)</b><span>изобразить шёпот без микрофона</span>
+        <b>M</b><span>вкл/выкл звук игры</span>
+        <b>G</b><span>полный экран</span>
+        <b>H / ?</b><span>этот экран</span>
+        <b>Esc / P</b><span>пауза</span>
+      </div>
+      <p><b>Трубы</b> 💧 чинятся криком (быстро) и шёпотом (медленно).<br>
+      <b>Щитки</b> ⚡ — только шёпотом: крик даёт искры и откат.<br>
+      Починка даёт +25 воздуха и откачивает воду. Молчи — Сосед уплывает.</p>
+      <div class="btns"><button class="mini" id="helpClose">Понятно</button></div>
+    </div>
+  </div>
+  <div id="end" class="overlay hidden">
+    <div class="panel" id="endPanel"></div>
+  </div>
+  <audio id="remoteAudio" autoplay></audio>
+</div>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const el = id => document.getElementById(id);
+const ui = {
+  oxygen: el("oxygenFill"), noise: el("noiseFill"), obj: el("objective"), toast: el("toast"), timer: el("timerEl"),
+  loud: el("loudFill"), cross: el("crosshair"), hint: el("actHint"), sysList: el("sysList"), zoneName: el("loudZoneName"),
+  vign: el("vign"), waterTint: el("waterTint"), menu: el("menu"), calib: el("calib"), pause: el("pause"),
+  help: el("help"), end: el("end"), endPanel: el("endPanel"), netPill: el("netPill"),
+  topLeft: el("topLeft"), topRight: el("topRight"), topCenter: el("topCenter"),
+  loudBox: el("loudBox"), buttons: el("buttons"), touchUI: el("touchUI"),
+  muteBtn: el("muteBtn"), fsBtn: el("fsBtn"), helpBtn: el("helpBtn"), pauseBtn: el("pauseBtn"), lobby: el("lobby"), musicBtn: el("musicBtn"),
+};
+
+const S = { val: "intro" };
+const isTouch = matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
+let muted = false, sens = 0.0026, micSens = 1.25;
+let oxygen = 100, water = 0, noise = 0, neighborD = 100, runTime = 0, fixedCount = 0;
+let tt = 0, loud = 0, loudDisp = 0, toastT = 0, hbT = 0, stepDist = 0, shake = 0;
+let moving = false, sysListT = 0, spawnDelay = 0, hintT = 22;
+const keys = {};
+let yaw = Math.PI, pitch = 0;
+const ROOM = { w: 26, d: 15, h: 6.2 };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020509);
+scene.fog = new THREE.Fog(0x04101c, 10, 42);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 90);
+scene.add(camera);
+const renderer = new THREE.WebGLRenderer({ antialias: !isTouch, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight);
+document.getElementById("wrap").appendChild(renderer.domElement);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), isTouch ? 0.42 : 0.55, 0.7, 0.6);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+scene.add(new THREE.AmbientLight(0x2c4a68, 1.4));
+scene.add(new THREE.HemisphereLight(0x8fc4ff, 0x2a4433, 0.6));
+const lamp = new THREE.PointLight(0xbfe4ff, 90, 26, 1.6);
+lamp.position.set(0, ROOM.h - 0.7, 0);
+scene.add(lamp);
+const backLight = new THREE.PointLight(0x2a6a9a, 30, 20, 1.8);
+backLight.position.set(0, 3, -ROOM.d/2 + 1);
+scene.add(backLight);
+const redBeacon = new THREE.PointLight(0xff2035, 0, 24, 1.5);
+redBeacon.position.set(0, ROOM.h - 1, 0);
+scene.add(redBeacon);
+const beaconMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff2035, transparent: true, opacity: 0 }));
+beaconMesh.position.copy(redBeacon.position);
+scene.add(beaconMesh);
+
+const stdMat = (c, r = 0.7, m = 0.25, e = 0x000000, ei = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, emissive: e, emissiveIntensity: ei });
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), stdMat(0x101c2a, 0.85, 0.2));
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+const plateMat = stdMat(0x16283c, 0.8, 0.3);
+for (let i = -3; i <= 3; i++) for (let j = -2; j <= 2; j++){
+  const pl = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.06, 2.7), plateMat);
+  pl.position.set(i*3.5, 0.03, j*2.85);
+  scene.add(pl);
+}
+
+function metalPanelTex(base, line, hi){
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 256;
+  const c = cv.getContext("2d");
+  c.fillStyle = base; c.fillRect(0, 0, 256, 256);
+  c.strokeStyle = line; c.lineWidth = 4;
+  c.strokeRect(4, 4, 248, 248);
+  c.beginPath(); c.moveTo(128, 6); c.lineTo(128, 250);
+  c.moveTo(6, 128); c.lineTo(250, 128); c.stroke();
+  c.fillStyle = line;
+  for (let i = 0; i < 4; i++){
+    c.beginPath(); c.arc(22, 40 + i*60, 3.5, 0, 7); c.fill();
+    c.beginPath(); c.arc(234, 70 + i*60, 3.5, 0, 7); c.fill();
+  }
+  c.globalAlpha = 0.14; c.fillStyle = hi;
+  for (let i = 0; i < 26; i++) c.fillRect(Math.random()*256, Math.random()*256, 5 + Math.random()*30, 2);
+  c.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(4, 2);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const wallMat = new THREE.MeshStandardMaterial({ map: metalPanelTex("#254156", "#132639", "#3f7099"), roughness: 0.75, metalness: 0.5 });
+const HULL = { r: 6.0, y: 1.9, len: 26.6 };
+const hullTex = metalPanelTex("#2a4a66", "#16293d", "#4a7ea8");
+hullTex.repeat.set(7, 2);
+const hullMat = new THREE.MeshStandardMaterial({ color: 0xbfd6e4, map: hullTex, roughness: 0.7, metalness: 0.55, side: THREE.DoubleSide });
+function hullPiece(a0, alen, x0, x1){
+  const g = new THREE.CylinderGeometry(HULL.r, HULL.r, x1 - x0, 28, 1, true, a0, alen);
+  g.rotateZ(Math.PI/2);
+  const m = new THREE.Mesh(g, hullMat);
+  m.position.set((x0 + x1)/2, HULL.y, 0);
+  scene.add(m);
+}
+hullPiece(-Math.PI/2, Math.PI, -HULL.len/2, HULL.len/2);
+for (const [x0, x1] of [[-HULL.len/2, -5.5], [-3.6, -0.9], [0.9, 3.6], [5.5, HULL.len/2]]){
+  hullPiece(Math.PI/2, Math.PI, x0, x1);
+}
+for (const wx of [-4.5, 0, 4.5]){
+  const wz = -Math.sqrt(HULL.r*HULL.r - (2.7 - HULL.y)*(2.7 - HULL.y));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.09, 10, 28), stdMat(0xcc9f2f, 0.4, 0.7));
+  ring.position.set(wx, 2.7, wz + 0.08);
+  ring.rotation.x = 0.13;
+  scene.add(ring);
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.72, 28), new THREE.MeshBasicMaterial({ color: 0x0d3350, transparent: true, opacity: 0.42 }));
+  glass.position.set(wx, 2.7, wz + 0.03);
+  glass.rotation.x = 0.13;
+  scene.add(glass);
+}
+for (const sx of [-1, 1]){
+  const bh = new THREE.Mesh(new THREE.CircleGeometry(HULL.r - 0.1, 40), new THREE.MeshStandardMaterial({ map: metalPanelTex("#314962", "#1a2f44", "#5d90b8"), roughness: 0.7, metalness: 0.5, side: THREE.DoubleSide }));
+  bh.position.set(sx * 12.95, HULL.y, 0);
+  bh.rotation.y = sx > 0 ? -Math.PI/2 : Math.PI/2;
+  scene.add(bh);
+}
+
+const ribCols = [0x9a3b2e, 0x2e6b5e, 0x8a6d2b, 0x2e4f8a];
+for (let i = -3; i <= 3; i++){
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(HULL.r - 0.02, 0.15, 10, 42), stdMat(ribCols[(i + 3) % 4], 0.55, 0.6));
+  ring.position.set(i*3.4, HULL.y, 0);
+  ring.rotation.y = Math.PI/2;
+  scene.add(ring);
+}
+
+const hatchGrp = new THREE.Group();
+const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.2, 30), stdMat(0x2b4a63, 0.4, 0.8));
+hatchDoor.rotation.z = Math.PI/2;
+hatchGrp.add(hatchDoor);
+const hatchRing = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.09, 10, 30), stdMat(0xcc9f2f, 0.4, 0.7));
+hatchRing.rotation.y = Math.PI/2;
+hatchRing.position.x = 0.14;
+hatchGrp.add(hatchRing);
+const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 22), stdMat(0xcc2f2f, 0.4, 0.7));
+wheel.rotation.y = Math.PI/2;
+wheel.position.x = -0.2;
+hatchGrp.add(wheel);
+for (let i = 0; i < 3; i++){
+  const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.6, 0.05), stdMat(0xcc2f2f, 0.4, 0.7));
+  spoke.rotation.x = i * Math.PI/3;
+  spoke.position.x = -0.2;
+  hatchGrp.add(spoke);
+}
+hatchGrp.position.set(ROOM.w/2 - 0.12, 1.75, -4.2);
+scene.add(hatchGrp);
+
+const pipeMats = [stdMat(0xa83232, 0.5, 0.6), stdMat(0x2e8a7a, 0.5, 0.6)];
+for (let i = 0; i < 2; i++){
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, ROOM.d - 1, 12), pipeMats[i]);
+  pipe.rotation.x = Math.PI/2;
+  pipe.position.set(-5 + i*10, ROOM.h - 0.5, 0);
+  scene.add(pipe);
+  for (const pz of [-3.4, 3.4]){
+    const valve = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.05, 8, 20), stdMat(0xcc2f2f, 0.4, 0.7));
+    valve.position.set(-5 + i*10, ROOM.h - 0.85, pz);
+    scene.add(valve);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.34, 8), stdMat(0x86929c, 0.4, 0.8));
+    stem.position.set(-5 + i*10, ROOM.h - 0.85, pz);
+    scene.add(stem);
+  }
+}
+
+const hzCv = document.createElement("canvas");
+hzCv.width = 128; hzCv.height = 16;
+const hzc = hzCv.getContext("2d");
+for (let i = 0; i < 8; i++){
+  hzc.fillStyle = i % 2 ? "#111111" : "#f4c518";
+  hzc.fillRect(i*16, 0, 16, 16);
+}
+const hzTex = new THREE.CanvasTexture(hzCv);
+hzTex.wrapS = THREE.RepeatWrapping;
+hzTex.repeat.set(22, 1);
+hzTex.colorSpace = THREE.SRGBColorSpace;
+const hzStrip = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.02, ROOM.d - 1.2), new THREE.MeshStandardMaterial({ map: hzTex, roughness: 0.8 }));
+hzStrip.position.set(2.4, 0.06, 0);
+scene.add(hzStrip);
+const hzStrip2 = hzStrip.clone();
+hzStrip2.position.set(-2.4, 0.06, 0);
+scene.add(hzStrip2);
+
+function mkLampBox(x, z, col, inten){
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.34), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.6, roughness: 0.5 }));
+  box.position.set(x, 3.05, z);
+  box.rotation.y = Math.PI/2;
+  scene.add(box);
+  const lt = new THREE.PointLight(col, inten, 13, 1.4);
+  lt.position.set(x, 2.7, z);
+  scene.add(lt);
+}
+mkLampBox(-11.4, -4.8, 0x2fffc8, 46);
+mkLampBox(11.4, 4.8, 0xffa02f, 46);
+
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), stdMat(0x0b1926, 0.9, 0.2));
+ceiling.rotation.x = Math.PI/2;
+ceiling.position.y = ROOM.h;
+scene.add(ceiling);
+const stripMat = new THREE.MeshBasicMaterial({ color: 0xd8f2ff });
+for (const px of [-6, 0, 6]){
+  const strip = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.34), stripMat);
+  strip.position.set(px, ROOM.h - 0.12, 0);
+  scene.add(strip);
+}
+
+const propMat = stdMat(0x24384c, 0.8, 0.2);
+const crate1 = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), propMat);
+crate1.position.set(6.5, 0.55, 3.4);
+crate1.rotation.y = 0.4;
+scene.add(crate1);
+const crate2 = crate1.clone();
+crate2.position.set(7.8, 0.55, 4.6);
+crate2.rotation.y = -0.2;
+scene.add(crate2);
+const crate3 = crate1.clone();
+crate3.position.set(7.2, 1.65, 4.1);
+crate3.rotation.y = 0.9;
+scene.add(crate3);
+const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.2, 16), stdMat(0x2b4a63, 0.6, 0.4));
+barrel.position.set(-6.8, 0.6, 3.8);
+scene.add(barrel);
+
+const modelLoader = new GLTFLoader();
+const nautilusGroup = new THREE.Group();
+nautilusGroup.position.set(0, 2.2, -ROOM.d/2 - 7);
+scene.add(nautilusGroup);
+function fitModel(root, maxDim, place){
+  root.traverse(o => {
+    if (o.isMesh && o.material && o.material.color){
+      o.material.color = o.material.color.clone().multiplyScalar(o.material.map ? 1.15 : 1.5);
+    }
+  });
+  const bb = new THREE.Box3().setFromObject(root);
+  const size = bb.getSize(new THREE.Vector3());
+  root.scale.setScalar(maxDim / Math.max(size.x, size.y, size.z, 0.0001));
+  const centered = new THREE.Box3().setFromObject(root);
+  const mid = centered.getCenter(new THREE.Vector3());
+  root.position.set(-mid.x, -centered.min.y, -mid.z);
+  place();
+}
+modelLoader.load("models/nautilus.glb", gltf => {
+  const sub = gltf.scene;
+  sub.rotation.y = Math.PI/2;
+  fitModel(sub, 9, () => {});
+  nautilusGroup.add(sub);
+}, undefined, () => {});
+modelLoader.load("models/helmet.glb", gltf => {
+  const h = gltf.scene;
+  h.rotation.y = Math.PI + 0.7;
+  fitModel(h, 0.85, () => {
+    h.position.x += 7.8;
+    h.position.y += 1.1;
+    h.position.z += 4.6;
+  });
+  scene.add(h);
+}, undefined, () => {});
+
+const decorSets = [
+  ["models/decor/decor_computer.glb", 1.15, -10.8, 0, -5.0, Math.PI/2],
+  ["models/decor/decor_computer_small.glb", 0.9, -9.4, 0, -5.1, Math.PI/2 + 0.4],
+  ["models/decor/decor_vessel_tall.glb", 1.9, -12.0, 0, 4.9, 0],
+  ["models/decor/decor_vessel_short.glb", 1.1, -10.7, 0, 4.9, 0.6],
+  ["models/decor/decor_shelf_tall.glb", 2.1, 12.2, 0, -4.6, -Math.PI/2],
+  ["models/decor/decor_crate_long.glb", 1.6, 11.6, 0, 4.9, 0.15],
+  ["models/decor/decor_pod.glb", 1.8, 12.2, 0, -2.5, -Math.PI/2],
+  ["models/decor/decor_bookshelf.glb", 1.5, -2.2, 0, -5.0, Math.PI],
+  ["models/decor/decor_chair.glb", 0.95, -3.4, 0, -5.2, Math.PI*0.85],
+  ["models/decor/decor_plant.glb", 0.5, 7.2, 2.2, 4.1, -0.4],
+  ["models/decor/decor_fridge.glb", 1.8, 9.6, 0, 5.0, -Math.PI/2 - 0.3],
+  ["models/decor/decor_stool.glb", 0.55, 12.0, 0, 2.2, -Math.PI/2]
+];
+function addDecor(path, maxDim, x, y, z, ry){
+  modelLoader.load(path, gltf => {
+    const m = gltf.scene;
+    m.rotation.y = ry;
+    fitModel(m, maxDim, () => {
+      m.position.x += x; m.position.y += y; m.position.z += z;
+      scene.add(m);
+    });
+  }, undefined, () => {});
+}
+for (const d of decorSets) addDecor(...d);
+
+const boombox = new THREE.Group();
+const bbBody = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.34, 0.22), stdMat(0xff7f2a, 0.5, 0.3, 0xff7f2a, 0.08));
+boombox.add(bbBody);
+for (const sx of [-0.16, 0.16]){
+  const spd = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.05, 18), stdMat(0x101418, 0.8, 0.1));
+  spd.rotation.x = Math.PI/2;
+  spd.position.set(sx, -0.02, 0.12);
+  boombox.add(spd);
+  const sgr = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 8, 20), stdMat(0xcc5a00, 0.6, 0.4));
+  sgr.position.set(sx, -0.02, 0.125);
+  boombox.add(sgr);
+}
+const tapeSlot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.02), new THREE.MeshBasicMaterial({ color: 0xffd93d }));
+tapeSlot.position.set(0, 0.09, 0.12);
+boombox.add(tapeSlot);
+const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.34, 6), stdMat(0xcccccc, 0.4, 0.9));
+antenna.position.set(0.26, 0.27, -0.04);
+antenna.rotation.z = -0.5;
+boombox.add(antenna);
+boombox.position.set(-12.0, 0.17, 2.6);
+boombox.rotation.y = Math.PI/2 - 0.3;
+scene.add(boombox);
+
+let lofiOn = false, lofiTmr = null, crackleBuf = null, lofiCrackle = null;
+const lofiChords = [
+  [174.61, 220.0, 261.63, 329.63],
+  [146.83, 220.0, 349.23, 440.0],
+  [196.0, 246.94, 293.66, 349.23],
+  [130.81, 196.0, 261.63, 329.63]
+];
+function lofiTone(f, t0, dur, vol, type){
+  const o = fx.createOscillator(); o.type = type || "triangle";
+  o.frequency.value = f; o.detune.value = Math.random()*7 - 3;
+  const g = fx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + dur*0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  const lp = fx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1400;
+  o.connect(g); g.connect(lp); lp.connect(master);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function lofiNoiseHit(t0, freq, dur, vol, q){
+  const b = fx.createBufferSource(); b.buffer = crackleBuf; b.loop = true;
+  const f = fx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q || 1;
+  const g = fx.createGain();
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  b.connect(f); f.connect(g); g.connect(master); b.start(t0); b.stop(t0 + dur + 0.05);
+}
+function lofiBar(i){
+  if (!lofiOn) return;
+  const t0 = fx.currentTime + 0.05;
+  const chord = lofiChords[i % 4];
+  for (const f of chord) lofiTone(f * 2, t0, 3.1, 0.035);
+  lofiTone(chord[0]/2, t0, 1.5, 0.05, "sine");
+  lofiTone(chord[0]/2, t0 + 1.7, 1.5, 0.045, "sine");
+  lofiTone(chord[1]/2, t0 + 2.9, 0.6, 0.035, "sine");
+  lofiNoiseHit(t0, 52, 0.3, 0.34, 0.7);
+  lofiNoiseHit(t0 + 1.7, 52, 0.3, 0.34, 0.7);
+  lofiNoiseHit(t0 + 0.92, 1800, 0.16, 0.14);
+  lofiNoiseHit(t0 + 2.62, 1800, 0.16, 0.14);
+  for (let bts = 0; bts < 8; bts++) lofiNoiseHit(t0 + bts*0.4375 + 0.21, 7000, 0.05, bts % 2 ? 0.02 : 0.045, 2);
+  lofiTmr = setTimeout(() => lofiBar(i + 1), 3520);
+}
+function setLofi(on){
+  if (!fx){ return; }
+  if (on && !lofiOn){
+    if (!crackleBuf){
+      crackleBuf = fx.createBuffer(1, fx.sampleRate * 2, fx.sampleRate);
+      const d0 = crackleBuf.getChannelData(0);
+      for (let i = 0; i < d0.length; i++) d0[i] = Math.random()*2 - 1;
+    }
+    const cr = fx.createBufferSource(); cr.buffer = crackleBuf; cr.loop = true;
+    const cf = fx.createBiquadFilter(); cf.type = "highpass"; cf.frequency.value = 4500;
+    const cg = fx.createGain(); cg.gain.value = 0.016;
+    cr.connect(cf); cf.connect(cg); cg.connect(master); cr.start();
+    lofiCrackle = cr;
+    lofiOn = true;
+    lofiBar(0);
+  } else if (!on && lofiOn){
+    lofiOn = false;
+    if (lofiTmr){ clearTimeout(lofiTmr); lofiTmr = null; }
+    try { lofiCrackle.stop(); } catch(e){}
+    lofiCrackle = null;
+  }
+  ui.musicBtn.classList.toggle("off", !lofiOn);
+}
+
+const canisters = [];
+for (const [cax, caz] of [[-6.5, 2.2], [4.6, -3.4], [8.2, 0.6]]){
+  const cd = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.6, 12),
+    new THREE.MeshStandardMaterial({ color: 0x36e0c8, roughness: 0.4, metalness: 0.3, emissive: 0x2ed5b0, emissiveIntensity: 0.7 }));
+  cd.position.set(cax, 0.3, caz);
+  scene.add(cd);
+  const crg = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 16), stdMat(0xccdddd, 0.5, 0.6));
+  crg.position.set(cax, 0.62, caz); crg.rotation.x = Math.PI/2;
+  scene.add(crg);
+  canisters.push({ x: cax, z: caz, t: 0, base: cd, ring: crg });
+}
+
+const fishFlock = [];
+[["models/decor/fish_clown.glb", 0.55, 3.5, -9.5, 2.2, 0.9, 0],
+ ["models/decor/fish_tang.glb", 0.5, 5.2, -10.5, 3.1, -0.7, 2.1],
+ ["models/decor/fish_angler.glb", 0.7, 6.5, -8.6, 1.1, 0.5, 4.0],
+ ["models/decor/fish_lion.glb", 0.55, -3.0, -10.0, 2.6, 0.8, 1.3],
+ ["models/decor/fish_grouper.glb", 0.6, 1.5, -9.8, 1.6, -0.9, 3.4]].forEach(c => {
+  modelLoader.load(c[0], gltf => {
+    const f = gltf.scene;
+    fitModel(f, c[1], () => {});
+    scene.add(f);
+    fishFlock.push({ m: f, cx: c[2], cz: c[3], y0: c[4], rad: c[5], ph: c[6], sp: 0.4 + Math.random()*0.3 });
+  }, undefined, () => {});
+});
+
+
+for (let i = 0; i < 5; i++){
+  const cable = new THREE.Mesh(new THREE.TorusGeometry(1.2 + Math.random()*0.6, 0.035, 6, 20, Math.PI), stdMat(0x101d2a, 0.6, 0.2));
+  cable.position.set(-8 + i*4, ROOM.h - 0.05, (Math.random()-0.5)*6);
+  cable.rotation.x = Math.PI/2;
+  cable.rotation.z = Math.random()*Math.PI;
+  scene.add(cable);
+}
+
+const buddy = new THREE.Group();
+const bBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.8, 6, 12), stdMat(0xcc4422, 0.6, 0.15));
+bBody.position.y = 0.85;
+buddy.add(bBody);
+const bHead = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), stdMat(0xcc4422, 0.6, 0.15));
+bHead.position.y = 1.62;
+buddy.add(bHead);
+const bVisor = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7ff0ff }));
+bVisor.position.set(0, 1.62, 0.14);
+bVisor.scale.set(1, 0.7, 0.6);
+buddy.add(bVisor);
+const bLamp = new THREE.SphereGeometry(0.07, 8, 6);
+const bLampMesh = new THREE.Mesh(bLamp, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+bLampMesh.position.set(0, 1.85, 0.15);
+buddy.add(bLampMesh);
+buddy.visible = false;
+scene.add(buddy);
+const buddyTag = document.createElement("div");
+buddyTag.style.cssText = "position:absolute;transform:translate(-50%,-100%);font-size:11px;color:#7ff0ff;text-shadow:0 1px 4px #000;pointer-events:none;letter-spacing:.12em;";
+buddyTag.textContent = "Друг";
+document.getElementById("wrap").appendChild(buddyTag);
+
+let systems = [];
+
+function addContact(group, x, y, z, r){
+  const c = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+  c.position.set(x, y, z);
+  group.add(c);
+  return c;
+}
+function addMarker(){
+  const mk = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: 0xffd93d }));
+  mk.visible = false;
+  scene.add(mk);
+  return mk;
+}
+
+function mkPipeSys(x, z, ry, label){
+  const g = new THREE.Group();
+  const green = stdMat(0x2a4d63, 0.45, 0.6);
+  const tubing = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 4.8, 14), green);
+  tubing.position.set(0, 3.8, 0);
+  g.add(tubing);
+  const h2 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.7, 14), green);
+  h2.rotation.z = Math.PI/2;
+  h2.position.set(0.85, 1.5, 0);
+  g.add(h2);
+  const joint = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 8), green);
+  joint.position.set(1.7, 1.5, 0);
+  g.add(joint);
+  const valve = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.055, 8, 18), stdMat(0x8a2a2a, 0.5, 0.5));
+  valve.rotation.y = Math.PI/2;
+  valve.position.set(1.7, 1.5, 0);
+  g.add(valve);
+  for (let s = 0; s < 4; s++){
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.045, 0.045), stdMat(0x8a2a2a, 0.5, 0.5));
+    spoke.rotation.z = s * Math.PI/4;
+    spoke.position.set(1.7, 1.5, 0);
+    g.add(spoke);
+  }
+  const leak = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshBasicMaterial({ color: 0x8fe0ff }));
+  leak.position.set(1.7, 1.72, 0);
+  g.add(leak);
+  const lampBall = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff4757 }));
+  lampBall.position.set(0, 1.5, 0.34);
+  g.add(lampBall);
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  scene.add(g);
+  const contact = addContact(g, 1.7, 1.5, 0, 0.75);
+  systems.push({ kind: "pipe", g, valve, leak, lampBall, contact, marker: addMarker(), label, broken: false, shownProg: 0, x, z });
+}
+
+function mkFuseSys(x, z, ry, label){
+  const g = new THREE.Group();
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.34), stdMat(0x24384c, 0.6, 0.5));
+  box.position.set(0, 1.7, 0);
+  g.add(box);
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.1), stdMat(0x101d2a, 0.4, 0.6));
+  panel.position.set(0, 1.7, 0.19);
+  g.add(panel);
+  const switches = [];
+  for (let i = 0; i < 6; i++){
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 0.1), new THREE.MeshStandardMaterial({ color: 0xcc4422, roughness: 0.5, metalness: 0.2, emissive: 0x551105, emissiveIntensity: 0.6 }));
+    sw.position.set(-0.3 + (i % 3)*0.3, 2.08 - Math.floor(i/3)*0.34, 0.26);
+    g.add(sw);
+    switches.push(sw);
+  }
+  const warn = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0x2ed573 }));
+  warn.position.set(0, 2.55, 0.22);
+  g.add(warn);
+  const smoke = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 8), new THREE.MeshBasicMaterial({ color: 0x44525f, transparent: true, opacity: 0.5 }));
+  smoke.position.set(0, 2.7, 0.2);
+  g.add(smoke);
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  scene.add(g);
+  const contact = addContact(g, 0, 1.7, 0.5, 0.85);
+  systems.push({ kind: "fuse", g, switches, warn, smoke, contact, marker: addMarker(), label, broken: false, shownProg: 0, x, z });
+}
+
+mkPipeSys(-8.5, -5.2, 0, "труба северо-запад");
+mkPipeSys(9.5, -5.2, 0, "труба северо-восток");
+mkPipeSys(ROOM.w/2 - 0.5, -2, -Math.PI/2, "труба восток");
+mkFuseSys(0, 5.2, Math.PI, "щиток юг");
+mkFuseSys(-ROOM.w/2 + 0.42, 3.5, Math.PI/2, "щиток запад");
+
+const waterMat2 = new THREE.MeshPhysicalMaterial({ color: 0x12508c, transparent: true, opacity: 0, roughness: 0.12, metalness: 0.05, side: THREE.DoubleSide });
+const waterPlane = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d, 24, 16), waterMat2);
+waterPlane.rotation.x = -Math.PI/2;
+scene.add(waterPlane);
+const wPos = waterPlane.geometry.attributes.position;
+
+const neighborMesh = new THREE.Group();
+const nbBody = new THREE.Mesh(new THREE.SphereGeometry(2.4, 20, 14), new THREE.MeshBasicMaterial({ color: 0x00030a }));
+nbBody.scale.set(1.9, 0.75, 0.8);
+neighborMesh.add(nbBody);
+const nbFin = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2.6, 4), new THREE.MeshBasicMaterial({ color: 0x000510 }));
+nbFin.rotation.z = Math.PI/2;
+nbFin.position.x = 4.2;
+neighborMesh.add(nbFin);
+for (const s of [-1, 1]){
+  const e = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xd8f2ff }));
+  e.position.set(1.6*s, 0.3, 1.7);
+  neighborMesh.add(e);
+}
+neighborMesh.position.set(0, 3, -ROOM.d/2 - 16);
+scene.add(neighborMesh);
+
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(400 * 3);
+for (let i = 0; i < 400; i++){
+  dustPos[i*3] = (Math.random()-0.5) * ROOM.w;
+  dustPos[i*3+1] = Math.random() * ROOM.h;
+  dustPos[i*3+2] = (Math.random()-0.5) * ROOM.d;
+}
+dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x4a80a5, size: 0.03, transparent: true, opacity: 0.5 })));
+
+const MAXDROP = 140;
+const dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 6, 6), new THREE.MeshBasicMaterial({ color: 0x8fe0ff, transparent: true, opacity: 0.85 }), MAXDROP);
+scene.add(dropMesh);
+const drops = [];
+const sparkMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 5, 5), new THREE.MeshBasicMaterial({ color: 0xffd93d }), 80);
+scene.add(sparkMesh);
+const sparks = [];
+
+const handMat = stdMat(0xcc4422, 0.6, 0.15);
+const gloves = new THREE.Group();
+const palmL = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.22), handMat);
+palmL.position.set(-0.24, -0.3, -0.44);
+gloves.add(palmL);
+const palmR = palmL.clone();
+palmR.position.x = 0.22;
+gloves.add(palmR);
+const wrench = new THREE.Group();
+const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.44, 8), stdMat(0x9fb4c4, 0.35, 0.9));
+handle.rotation.x = Math.PI/2;
+wrench.add(handle);
+const whead = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.022, 6, 12, Math.PI*1.4), stdMat(0x9fb4c4, 0.35, 0.9));
+whead.position.z = -0.2;
+wrench.add(whead);
+wrench.position.set(0.24, -0.26, -0.44);
+gloves.add(wrench);
+camera.add(gloves);
+
+const playerPos = new THREE.Vector3(0, 0, 4.5);
+
+let fx = null, master = null, hissGain = null;
+function initAudio(){
+  if (fx) return;
+  fx = new (window.AudioContext || window.webkitAudioContext)();
+  master = fx.createGain();
+  master.gain.value = muted ? 0 : 1;
+  master.connect(fx.destination);
+  const noiseBuf = fx.createBuffer(1, fx.sampleRate * 2, fx.sampleRate);
+  const nd = noiseBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random()*2 - 1;
+  const rumble = fx.createBufferSource();
+  rumble.buffer = noiseBuf;
+  rumble.loop = true;
+  const rf = fx.createBiquadFilter();
+  rf.type = "lowpass";
+  rf.frequency.value = 90;
+  const rg = fx.createGain();
+  rg.gain.value = 0.14;
+  rumble.connect(rf); rf.connect(rg); rg.connect(master);
+  rumble.start();
+  const hiss = fx.createBufferSource();
+  hiss.buffer = noiseBuf;
+  hiss.loop = true;
+  const hf = fx.createBiquadFilter();
+  hf.type = "bandpass";
+  hf.frequency.value = 900;
+  hf.Q.value = 0.8;
+  hissGain = fx.createGain();
+  hissGain.gain.value = 0;
+  hiss.connect(hf); hf.connect(hissGain); hissGain.connect(master);
+  hiss.start();
+}
+function beep(freq, dur, type, vol = 1){
+  if (!fx || muted) return;
+  const o = fx.createOscillator(), g = fx.createGain();
+  o.type = type || "sine";
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001 * vol, fx.currentTime);
+  g.gain.linearRampToValueAtTime(0.16 * vol, fx.currentTime + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, fx.currentTime + dur);
+  o.connect(g); g.connect(master);
+  o.start(); o.stop(fx.currentTime + dur + 0.05);
+}
+function footstep(){
+  if (!fx || muted) return;
+  const o = fx.createOscillator(), g = fx.createGain();
+  o.type = "triangle";
+  o.frequency.setValueAtTime(120 + Math.random()*40, fx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(55, fx.currentTime + 0.08);
+  g.gain.setValueAtTime(0.06, fx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, fx.currentTime + 0.1);
+  o.connect(g); g.connect(master);
+  o.start(); o.stop(fx.currentTime + 0.12);
+}
+
+const micState = { ctx:null, an:null, buf:null, ready:false, floor:0.004, peak:0.07, calibT:-1, stream:null };
+async function initMic(){
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: false } });
+  const mctx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = mctx.createMediaStreamSource(stream);
+  const an = mctx.createAnalyser();
+  an.fftSize = 1024;
+  src.connect(an);
+  micState.ctx = mctx;
+  micState.an = an;
+  micState.buf = new Float32Array(an.fftSize);
+  micState.stream = stream;
+  micState.ready = true;
+}
+function readMic(dt){
+  if (!micState.ready){
+    loud += (0 - loud) * Math.min(1, dt * 8);
+    return;
+  }
+  micState.an.getFloatTimeDomainData(micState.buf);
+  let sum = 0;
+  for (let i = 0; i < micState.buf.length; i++) sum += micState.buf[i] * micState.buf[i];
+  const rms = Math.sqrt(sum / micState.buf.length);
+  const m = micState;
+  m.calibT += dt;
+  if (m.calibT >= 0.1 && m.calibT < 2){
+    m.floor = Math.min(m.floor, rms * 1.4 + 0.001);
+  } else {
+    if (rms > m.floor * 2.2) m.peak = Math.max(m.peak, rms);
+    m.peak = Math.max(m.floor * 2, m.peak * (1 - dt * 0.04));
+    if (m.calibT < 2) {} else {
+      const range = Math.max(0.05, (m.peak - m.floor) * 0.8);
+      let raw = clamp((rms - m.floor) / range, 0, 1);
+      raw = Math.pow(raw, 0.8);
+      const target = clamp(raw * micSens, 0, 1);
+      loud += (target - loud) * Math.min(1, dt * 14);
+    }
+  }
+  if (m.calibT < 2) loud = 0;
+}
+const touchState = { moveX:0, moveZ:0, shout:false, whisper:false, run:false };
+function voiceFromButtons(dt){
+  let kv = 0;
+  if (keys.f || touchState.shout) kv = 1;
+  else if (keys.v || touchState.whisper) kv = 0.3;
+  if (kv > 0) loud = Math.max(loud, loud + (kv - loud) * Math.min(1, dt * 10));
+  else if (!micState.ready) loud += (0 - loud) * Math.min(1, dt * 8);
+}
+
+const net = { mode:null, peer:null, conn:null, code:"", active:false, guestL:0, gRep:false, gRun:false, buddyPos:{ x:0, z:4.5, ry:0 }, timer:0, call:null, voiceOk:false, callTries:0 };
+function genCode(){
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let c = "";
+  for (let i = 0; i < 4; i++) c += A[Math.floor(Math.random() * A.length)];
+  return c;
+}
+function netSend(o){
+  try { if (net.conn && net.conn.open) net.conn.send(o); } catch(e){}
+}
+function netCleanup(){
+  stopBeacon();
+  if (net.peer){ try { net.peer.destroy(); } catch(e){} }
+  net.peer = null; net.conn = null; net.mode = null; net.active = false; net.guestL = 0; net.gRep = false; net.call = null; net.voiceOk = false; net.callTries = 0;
+  buddy.visible = false;
+  buddyTag.style.display = "none";
+  el("remoteAudio").srcObject = null;
+  ui.netPill.style.display = "none";
+}
+function setupCallIncoming(peer){
+  peer.on("call", call => {
+    call.answer(micState.ready ? micState.stream : undefined);
+    call.on("stream", remote => {
+      const a = el("remoteAudio");
+      a.srcObject = remote;
+      a.play().catch(() => {});
+    });
+    net.call = call;
+  });
+}
+function setupCallOutgoing(){
+  if (!micState.ready || !net.peer || !net.conn || !net.conn.open || net.mode !== "guest") return;
+  if (net.voiceOk) return;
+  if (net.callTries > 4) return;
+  net.callTries += 1;
+  if (net.call){ try { net.call.close(); } catch(e){} }
+  const call = net.peer.call(net.conn.peer, micState.stream);
+  call.on("stream", remote => {
+    const a = el("remoteAudio");
+    a.srcObject = remote;
+    a.volume = 0.9;
+    a.play().catch(() => {});
+    net.voiceOk = true;
+  });
+  net.call = call;
+}
+const peerOpts = {
+  config: { iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" },
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+  ] }
+};
+function saveRoom(code, role){
+  try {
+    let list = [];
+    const raw = localStorage.getItem("t40m_rooms");
+    if (raw) list = JSON.parse(raw) || [];
+    list = list.filter(r => r && r.code !== code);
+    list.unshift({ code: code, role: role, ts: Date.now() });
+    if (list.length > 8) list.length = 8;
+    localStorage.setItem("t40m_rooms", JSON.stringify(list));
+  } catch(e){}
+}
+let beaconPeer = null;
+function startBeacon(code){
+  stopBeacon();
+  const N = 14;
+  let i = 0;
+  const trySlot = () => {
+    if (net.mode !== "host" || beaconPeer || i >= N) return;
+    i++;
+    const p = new Peer(peerOpts);
+    p.on("error", err => {
+      if (err.type === "unavailable-id"){ try { p.destroy(); } catch(e){} trySlot(); }
+      else { try { p.destroy(); } catch(e){} }
+    });
+    p.on("open", () => {
+      if (beaconPeer || net.mode !== "host"){ try { p.destroy(); } catch(e){} return; }
+      beaconPeer = p;
+      p.on("connection", c => {
+        c.on("open", () => {
+          c.send({ t: "room", code: code, taken: net.active });
+          setTimeout(() => { try { c.close(); } catch(e){} }, 2000);
+        });
+      });
+    });
+  };
+  trySlot();
+}
+function stopBeacon(){ if (beaconPeer){ try { beaconPeer.destroy(); } catch(e){} beaconPeer = null; } }
+window.addEventListener("pagehide", stopBeacon);
+
+function hostRoom(useMicWanted){
+  let code = genCode();
+  let attempts = 0;
+  net.mode = "host";
+  net.code = code;
+  saveRoom(code, "host");
+  ui.menu.classList.add("hidden");
+  el("lobbyTitle").textContent = "ЖДЁМ ДРУГА";
+  el("codeShow").textContent = code;
+  el("lobbyMsg").textContent = "Скажи другу этот код, он вводит его у себя.";
+  el("lobby").classList.remove("hidden");
+  const NET_TYPES = ["network", "socket-error", "socket-closed", "server-error"];
+  function startPeer(){
+    attempts++;
+    if (net.peer){ try { net.peer.destroy(); } catch(e){} }
+    el("codeShow").textContent = code;
+    const peer = new Peer("t40m-v3-" + code.toLowerCase(), peerOpts);
+    net.peer = peer;
+    peer.on("open", () => { if (net.mode === "host"){ el("lobbyMsg").textContent = "Комната открыта! Ждём друга..."; attempts = 0; startBeacon(code); } });
+    peer.on("error", err => {
+      const t = err.type || "unknown";
+      if (net.mode !== "host") return;
+      if (t === "unavailable-id"){
+        if (attempts < 4){
+          el("lobbyMsg").textContent = "Код занят — берём другой...";
+          code = genCode(); net.code = code; saveRoom(code, "host");
+          setTimeout(startPeer, 1200);
+        } else {
+          el("lobbyMsg").textContent = "Не удалось занять код. Попробуй ещё раз.";
+        }
+        return;
+      }
+      if (NET_TYPES.includes(t) && attempts < 4){
+        el("lobbyMsg").textContent = "Сервер координации не отвечает — переподключаюсь (" + attempts + "/3)...";
+        setTimeout(startPeer, 1800);
+        return;
+      }
+      el("lobbyMsg").textContent = NET_TYPES.includes(t)
+        ? "Невозможно связаться с сервером координации peerjs.com. Проверь, не блокирует ли сеть VPN/антивирус/Wi-Fi, и попробуй ещё раз."
+        : "Ошибка сети: " + t + ". Попробуй ещё раз.";
+    });
+    peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
+    peer.on("connection", c => {
+      if (net.conn && net.conn.open){ c.close(); return; }
+      net.conn = c;
+      c.on("open", () => {
+        if (net.mode !== "host") return;
+        el("lobby").classList.add("hidden");
+        net.active = true;
+        stopBeacon();
+        beginRun(useMicWanted, true);
+      });
+      c.on("data", d => {
+        if (!d) return;
+        if (d.t === "in" && S.val === "play"){
+          net.guestL = clamp(d.l || 0, 0, 1);
+          net.gRep = !!d.r;
+          net.buddyPos = { x: d.x || 0, z: d.z || 0, ry: d.ry || 0 };
+          net.gRun = !!d.rn;
+        }
+      });
+      c.on("close", () => {
+        if (["play","paused","calib"].includes(S.val) && net.active){
+          toastMsg("Друг отключился.", 3);
+        }
+        net.active = false;
+        net.guestL = 0; net.gRep = false; net.gRun = false;
+        buddy.visible = false;
+        buddyTag.style.display = "none";
+      });
+    });
+    setupCallIncoming(peer);
+  }
+  startPeer();
+}
+function joinRoom(code, useMicWanted){
+  net.mode = "guest";
+  net.code = code;
+  saveRoom(code, "join");
+  ui.menu.classList.add("hidden");
+  el("lobbyTitle").textContent = "ПОДКЛЮЧЕНИЕ";
+  el("codeShow").textContent = code;
+  el("lobbyMsg").textContent = "Подключаюсь к другу...";
+  el("lobby").classList.remove("hidden");
+  net.retryUsed = false;
+  let attempts = 0;
+  const NET_TYPES = ["network", "socket-error", "socket-closed", "server-error"];
+  function startPeer(){
+    attempts++;
+    if (net.peer){ try { net.peer.destroy(); } catch(e){} }
+    const peer = new Peer(peerOpts);
+    net.peer = peer;
+    peer.on("open", () => { attempts = 0; tryConnect(); });
+    peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
+    peer.on("error", err => {
+      if (net.mode !== "guest") return;
+      const t = err.type || "unknown";
+      if (t === "peer-unavailable"){
+        if (!net.retryUsed){
+          net.retryUsed = true;
+          el("lobbyMsg").textContent = "Не нашёл сразу — пробую ещё раз...";
+          setTimeout(() => { if (net.mode === "guest") tryConnect(); }, 2500);
+        } else if (attempts < 4){
+          el("lobbyMsg").textContent = "Ищу друга ещё раз (" + attempts + "/3)...";
+          setTimeout(startPeer, 2000);
+        } else {
+          el("lobbyMsg").textContent = "Комната не найдена. Друг должен открыть игру и нажать «создать комнату».";
+        }
+        return;
+      }
+      if (NET_TYPES.includes(t) && attempts < 4){
+        el("lobbyMsg").textContent = "Сервер координации не отвечает — переподключаюсь (" + attempts + "/3)...";
+        setTimeout(startPeer, 1800);
+        return;
+      }
+      el("lobbyMsg").textContent = NET_TYPES.includes(t)
+        ? "Невозможно связаться с сервером координации peerjs.com. Проверь, не блокирует ли сеть VPN/антивирус/Wi-Fi, и попробуй ещё раз."
+        : "Ошибка сети: " + t + ". Проверь интернет и попробуй ещё раз.";
+    });
+    function tryConnect(){
+      if (net.mode !== "guest" || (net.conn && net.conn.open)) return;
+      el("lobbyMsg").textContent = "Ищу друга: код " + code + " ...";
+      const conn = peer.connect("t40m-v3-" + code.toLowerCase(), { reliable: true });
+      net.conn = conn;
+      conn.on("open", () => {
+        if (net.mode !== "guest") return;
+        el("lobby").classList.add("hidden");
+        net.active = true;
+        beginRun(useMicWanted, false);
+        setupCallOutgoing();
+      });
+      conn.on("data", d => {
+        if (!d) return;
+        if (d.t === "st" && ["play","calib"].includes(S.val)){
+          oxygen = d.o; water = d.w; noise = d.n; neighborD = d.d; runTime = d.tm || 0;
+          net.buddyPos = d.p || { x: 0, z: 4.5, ry: 0 };
+          if (d.f !== undefined && d.f !== fixedCount){ fixedCount = d.f; drawSysList(); }
+          systems.forEach((s, i) => {
+            const b = !!d.s[i][0], p = d.s[i][1];
+            if (!s.broken && b){ s.broken = b; s.shownProg = p; beep(90, 0.5, "sawtooth", 1.4); shake = 0.7; }
+            else { s.broken = b; s.progress = p; if (!repLocal) s.shownProg = p; }
+          });
+        } else if (d.t === "spawn" && S.val === "play"){
+          toastMsg(d.msg, 3.6);
+          drawSysList();
+        } else if (d.t === "toast" && S.val === "play"){
+          toastMsg(d.msg, d.dur || 2.8);
+        } else if (d.t === "end" && S.val !== "end"){
+          endScreen(d.title, d.good, d.lines || []);
+        } else if (d.t === "ping"){
+          netSend({ t: "pong" });
+        }
+      });
+      conn.on("close", () => {
+        if (["play","paused","calib"].includes(S.val)){
+          endScreen("СВЯЗЬ ПОТЕРЯНА", false, ["Друг покинул комнату.", "Время: " + runTime.toFixed(1) + " с"]);
+        }
+        net.active = false;
+      });
+    }
+    setupCallIncoming(peer);
+  }
+  startPeer();
+}
+
+let useMic = false, repLocal = false, pendingMode = "solo", enteredCode = "";
+
+function showHud(v){
+  for (const k of ["topLeft","topRight","topCenter","loudBox","buttons","sysList"]) ui[k].style.display = v ? "" : "none";
+  if (isTouch && v && ["play","calib"].includes(S.val)) ui.touchUI.style.display = "block";
+}
+function toastMsg(m, dur){
+  ui.toast.textContent = m;
+  toastT = dur || 2.6;
+}
+function toMenu(){
+  S.val = "intro";
+  if (document.exitPointerLock) document.exitPointerLock();
+  ui.end.classList.add("hidden");
+  ui.pause.classList.add("hidden");
+  ui.calib.classList.add("hidden");
+  ui.lobby.classList.add("hidden");
+  ui.help.classList.add("hidden");
+  ui.menu.classList.remove("hidden");
+  showHud(false);
+  ui.touchUI.style.display = "none";
+  netCleanup();
+  drawSysList();
+  drawScreens();
+}
+function endScreen(title, good, lines, fromNet){
+  if (!fromNet && net.mode === "host" && net.conn && net.conn.open){
+    netSend({ t: "end", title, good, lines });
+  }
+  S.val = "end";
+  if (document.exitPointerLock) document.exitPointerLock();
+  ui.touchUI.style.display = "none";
+  ui.vign.style.opacity = 0;
+  ui.waterTint.style.opacity = 0;
+  const rank = oxygen > 60 ? "S" : oxygen > 35 ? "A" : oxygen > 15 ? "B" : "C";
+  ui.endPanel.innerHTML =
+    "<h1 style='font-size:30px;background:none;color:" + (good ? "#2ed573" : "#ff4757") + "'>" + title + "</h1>" +
+    lines.map(l => "<p>" + l + "</p>").join("") +
+    "<p class='keys'>Оценка воздуха: <b>" + rank + "</b>" + (net.active ? " · комната <b>" + net.code + "</b>" : "") + "</p>" +
+    '<div class="btns"><button id="againBtn">В меню [R]</button></div>';
+  ui.end.classList.remove("hidden");
+  const btn = document.getElementById("againBtn");
+  if (btn) btn.onclick = toMenu;
+}
+function resetGame(){
+  oxygen = 100; water = 0; noise = 0; neighborD = 100; runTime = 0; fixedCount = 0;
+  loud = 0; shake = 0; toastT = 0; hintT = 20; repLocal = false;
+  systems.forEach(s => { s.broken = false; s.progress = 0; s.shownProg = 0; });
+  drops.length = 0; sparks.length = 0;
+  playerPos.set(0, 0, 4.5);
+  yaw = Math.PI; pitch = 0;
+  net.guestL = 0; net.gRep = false; net.gRun = false; net.buddyPos = { x: 0, z: 4.5, ry: 0 };
+  spawnDelay = 3;
+  for (const cn of canisters){ cn.t = 0; cn.base.visible = cn.ring.visible = true; }
+  buddy.visible = false;
+  buddyTag.style.display = "none";
+  for (const s of systems){
+    s.marker.visible = false;
+    if (s.kind === "pipe") s.leak.visible = false;
+    else { s.smoke.visible = false; s.warn.material.color.setHex(0x2ed573); }
+  }
+}
+function lockPointer(){
+  if (isTouch) return;
+  try {
+    const p = renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock();
+    if (p && p.catch) p.catch(() => {});
+  } catch(e){}
+}
+function beginRun(useMicWanted, isHost){
+  useMic = useMicWanted;
+  initAudio();
+  setLofi(true);
+  ui.menu.classList.add("hidden");
+  ui.lobby.classList.add("hidden");
+  ui.help.classList.add("hidden");
+  ui.pause.classList.add("hidden");
+  resetGame();
+  S.val = "play";
+  showHud(true);
+  ui.touchUI.style.display = isTouch ? "block" : "none";
+  ui.netPill.style.display = net.active ? "block" : "none";
+  ui.netPill.textContent = "КОМНАТА " + net.code + (isHost ? " · ты хост" : "");
+  if (isTouch && !document.fullscreenElement){
+    document.getElementById("wrap").requestFullscreen().catch(() => {});
+  }
+  if (useMicWanted){
+    micState.floor = 0.004; micState.peak = 0.07; micState.calibT = 0;
+    initMic().then(() => {
+      micState.calibT = 0;
+      ui.calib.classList.remove("hidden");
+      S.val = "calib";
+      setTimeout(setupCallOutgoing, 2300);
+      setTimeout(setupCallOutgoing, 6000);
+    }).catch(() => {
+      useMic = false;
+      toastMsg("Микрофон недоступен — играем клавишами: F крик / V шёпот", 4);
+    });
+  } else {
+    toastMsg(isHost ? "Друг на борту! Молчите — берегите Соседа. Дуэт чинит быстрее!" : "Ты на борту! Голос чинит, шум зовёт Соседа.", 4);
+  }
+  if (!isTouch) lockPointer();
+}
+function pauseGame(){
+  if (S.val !== "play") return;
+  S.val = "paused";
+  if (document.exitPointerLock) document.exitPointerLock();
+  ui.pause.classList.remove("hidden");
+}
+function resumeGame(){
+  if (S.val !== "paused") return;
+  ui.pause.classList.add("hidden");
+  S.val = "play";
+  lockPointer();
+}
+function nextSystem(){
+  return systems.find(s => s.broken) || null;
+}
+function spawnBroken(){
+  const remaining = systems.filter(s => !s.broken);
+  if (remaining.length === 0) return;
+  const pick = remaining[Math.floor(Math.random() * remaining.length)];
+  pick.broken = true;
+  pick.progress = 0;
+  pick.shownProg = 0;
+  shake = 0.7;
+  beep(90, 0.5, "sawtooth", 1.4);
+  const msg = pick.kind === "pipe"
+    ? "Труба хлещет водой: " + pick.label + " — КРИЧИ на неё!"
+    : "Щиток дымит: " + pick.label + " — только ШЁПОТ!";
+  toastMsg(msg, 3.6);
+  netSend({ t: "spawn", msg });
+  drawSysList();
+  drawScreens();
+}
+function finishSystem(sys){
+  sys.broken = false;
+  sys.progress = 100;
+  sys.shownProg = 100;
+  fixedCount += 1;
+  oxygen = Math.min(100, oxygen + 25);
+  water = Math.max(0, water - 20);
+  beep(760, 0.2, "sine", 1.1);
+  setTimeout(() => beep(1010, 0.26, "sine", 1.1), 130);
+  toastMsg("Система в порядке: +25 воздуха. Пока тихо...", 2.8);
+  netSend({ t: "toast", msg: "Система в порядке: +25 воздуха. Пока тихо...", dur: 2.8 });
+  drawSysList();
+  drawScreens();
+  if (systems.every(s => !s.broken)){
+    const lines = ["Все 5 систем живы.", "Время: " + runTime.toFixed(1) + " с" + (net.active ? " · вдвоём!" : "")];
+    setTimeout(() => { if (S.val === "play") endScreen(net.active ? "ВСПЛЫЛИ ВДВОЁМ!" : "ВСПЛЫТИЕ!", true, lines); }, 2400);
+  } else {
+    spawnDelay = Math.max(5, 12 - fixedCount * 1.4);
+  }
+}
+function applyStep(sys, l, dt, mul, doFx){
+  if (!sys) return false;
+  if (sys.kind === "pipe"){
+    const rate = (l > 0.35 ? 17 * l * l : 2.6) * mul;
+    const before = Math.floor(sys.progress / 10);
+    sys.progress = Math.min(100, sys.progress + rate * dt);
+    const after = Math.floor(sys.progress / 10);
+    if (after > before && doFx){ beep(440 + after*40, 0.09, "square", 0.8); spawnWaterBurst(sys); }
+  } else {
+    if (l > 0.35){
+      sys.progress = Math.max(0, sys.progress - 30 * dt);
+      if (doFx){ beep(160, 0.15, "sawtooth", 1.2); spawnSparks(sys); shake = Math.max(shake, 0.3); }
+    } else {
+      const before = Math.floor(sys.progress / 10);
+      sys.progress = Math.min(100, sys.progress + 4.2 * mul * dt);
+      const after = Math.floor(sys.progress / 10);
+      if (after > before && doFx){ beep(720 + after*30, 0.08, "sine", 0.7); spawnSparks(sys); }
+    }
+  }
+  return sys.progress >= 100;
+}
+function applyStepVisual(sys, l, dt, mul){
+  if (!sys) return;
+  if (sys.kind === "pipe"){
+    const rate = (l > 0.35 ? 17 * l * l : 2.6) * mul;
+    const before = Math.floor(sys.shownProg / 10);
+    sys.shownProg = Math.min(100, sys.shownProg + rate * dt);
+    const after = Math.floor(sys.shownProg / 10);
+    if (after > before){ beep(440 + after*40, 0.09, "square", 0.8); spawnWaterBurst(sys); }
+  } else {
+    if (l > 0.35){
+      sys.shownProg = Math.max(0, sys.shownProg - 30 * dt);
+      beep(160, 0.15, "sawtooth", 1.2);
+      spawnSparks(sys);
+      shake = Math.max(shake, 0.3);
+    } else {
+      const before = Math.floor(sys.shownProg / 10);
+      sys.shownProg = Math.min(100, sys.shownProg + 4.2 * mul * dt);
+      const after = Math.floor(sys.shownProg / 10);
+      if (after > before){ beep(720 + after*30, 0.08, "sine", 0.7); spawnSparks(sys); }
+    }
+  }
+}
+
+const raycaster = new THREE.Raycaster();
+function aimedSystem(){
+  const active = nextSystem();
+  if (!active) return null;
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  const broken = systems.filter(s => s.broken);
+  const hits = raycaster.intersectObjects(broken.map(s => s.contact), false);
+  if (hits.length && hits[0].distance < 3.6){
+    return broken.find(s => s.contact === hits[0].object) || null;
+  }
+  const dist = Math.hypot(active.x - playerPos.x, active.z - playerPos.z);
+  return dist < 1.5 ? active : null;
+}
+
+function spawnWaterBurst(sys){
+  const p = new THREE.Vector3(1.7, 1.72, 0).applyEuler(sys.g.rotation).add(sys.g.position);
+  for (let i = 0; i < 3 && drops.length < MAXDROP; i++){
+    drops.push({ x: p.x, y: p.y, z: p.z, vx: (Math.random()-0.5)*3.4, vy: 0.5 + Math.random()*1.4, vz: (Math.random()-0.5)*3.4 });
+  }
+}
+function spawnSparks(sys){
+  const p = new THREE.Vector3(0, 2, 0.25).applyEuler(sys.g.rotation).add(sys.g.position);
+  for (let i = 0; i < 5 && sparks.length < 80; i++){
+    sparks.push({ x: p.x, y: p.y, z: p.z, vx: (Math.random()-0.5)*4, vy: Math.random()*2.4, vz: (Math.random()-0.5)*4, life: 0.5 + Math.random()*0.4 });
+  }
+}
+
+function update(dt){
+  tt += dt;
+  if (S.val === "calib"){
+    readMic(dt);
+    if (micState.calibT >= 2){
+      ui.calib.classList.add("hidden");
+      S.val = "play";
+      lockPointer();
+      toastMsg("Готово! Кричи у трубы, шепчи у щитка.", 3.4);
+    }
+    return;
+  }
+  if (S.val !== "play") return;
+
+  runTime += dt;
+  readMic(dt);
+  voiceFromButtons(dt);
+
+  let dx = 0, dz = 0;
+  if (keys.w || keys.arrowup) dz -= 1;
+  if (keys.s || keys.arrowdown) dz += 1;
+  if (keys.a || keys.arrowleft) dx -= 1;
+  if (keys.d || keys.arrowright) dx += 1;
+  const stickLen = Math.hypot(touchState.moveX, touchState.moveZ);
+  if (stickLen > 0.14){ dx = touchState.moveX; dz = touchState.moveZ; }
+  const run = keys.shift === true || touchState.run;
+  moving = dx !== 0 || dz !== 0;
+  if (moving){
+    const len = Math.hypot(dx, dz);
+    dx /= len; dz /= len;
+    const speed = run ? 6 : 3.4;
+    const th = yaw + Math.PI;
+    const cosY = Math.cos(th), sinY = Math.sin(th);
+    const wx = dx * cosY + dz * sinY;
+    const wz = -dx * sinY + dz * cosY;
+    playerPos.x = clamp(playerPos.x + wx * speed * dt, -ROOM.w/2 + 1.2, ROOM.w/2 - 1.2);
+    playerPos.z = clamp(playerPos.z + wz * speed * dt, -4.85, 4.85);
+    stepDist += speed * dt;
+    if (stepDist > (run ? 2.4 : 2)){ stepDist = 0; footstep(); }
+  }
+
+  const bobA = moving ? (run ? 0.035 : 0.02) : 0;
+  gloves.position.y = Math.sin(tt * (run ? 13 : 9)) * bobA;
+  gloves.position.x = Math.cos(tt * (run ? 6.5 : 4.5)) * bobA * 0.6;
+  const bobY = Math.sin(tt * (run ? 13 : 9) * 2) * bobA * 0.6;
+  camera.position.set(playerPos.x, 1.62 + bobY, playerPos.z);
+  camera.rotation.order = "YXZ";
+  camera.rotation.set(pitch, yaw + Math.PI, Math.sin(tt * (run ? 13 : 9)) * bobA * 0.4);
+
+  const active = nextSystem();
+  const aim = aimedSystem();
+  repLocal = !!(active && aim === active && loud > 0.04);
+  let oxyExtra = 0;
+  if (loud > 0.04) oxyExtra += loud > 0.35 ? 7.5 * loud * loud : 1.5;
+
+  if (net.mode !== "guest"){
+    const duet = !!(repLocal && net.active && net.gRep && net.guestL > 0.04 && nextSystem() === active);
+    if (repLocal){
+      const doneLocal = applyStep(active, loud, dt, duet ? 1.7 : 1, true);
+      if (doneLocal) finishSystem(active);
+    }
+    if (net.active && net.gRep && net.guestL > 0.04){
+      const gs = nextSystem();
+      const done = applyStep(gs, net.guestL, dt, repLocal ? 0.65 : 1, false);
+      if (done && gs) finishSystem(gs);
+    }
+    if (active){
+      const d = Math.hypot(active.x - playerPos.x, active.z - playerPos.z);
+      const tgt = clamp(0.14 - d * 0.012, 0, 0.12);
+      hissGain.gain.value += (tgt - hissGain.gain.value) * Math.min(1, dt * 6);
+    } else if (hissGain.gain.value > 0){
+      hissGain.gain.value *= 0.95;
+    }
+    if (active) water += 1.6 * dt;
+    if (net.active && net.guestL > 0.04) oxygen -= (net.guestL > 0.35 ? 6 * net.guestL * net.guestL : 1.2) * dt;
+    oxygen -= (0.5 + oxyExtra) * dt;
+
+    let totalLoud = loud;
+    if (net.active && net.guestL > totalLoud) totalLoud = net.guestL;
+    if (totalLoud > 0.5) noise = clamp(noise + (totalLoud - 0.45) * 1.3 * dt, 0, 1);
+    if (totalLoud < 0.2) noise = clamp(noise - 0.85 * dt, 0, 1);
+    if ((moving && run) || (net.active && net.gRun)) noise = clamp(noise + 0.12 * dt, 0, 1);
+
+    if (noise > 0.1) neighborD -= noise * 7 * dt;
+    if (noise < 0.05 && totalLoud < 0.2 && neighborD < 100) neighborD += 1.4 * dt;
+    neighborD = clamp(neighborD, 0, 100);
+
+    if (net.mode !== "guest"){
+      for (const cn of canisters){
+        if (cn.t > 0){
+          cn.t -= dt;
+          cn.base.visible = cn.ring.visible = cn.t <= 0;
+        } else {
+          cn.base.visible = cn.ring.visible = true;
+          cn.base.rotation.y = tt * 1.5;
+          cn.ring.position.y = 0.62 + Math.sin(tt * 2 + cn.x) * 0.05;
+          if (Math.hypot(cn.x - playerPos.x, cn.z - playerPos.z) < 1.1){
+            oxygen = Math.min(100, oxygen + 20);
+            cn.t = 30;
+            toastMsg("+20 кислорода — новый баллон!", 2);
+            beep(880, 0.12, "sine", 0.8);
+          }
+        }
+      }
+    }
+    if (spawnDelay > 0 && !nextSystem()){
+      spawnDelay -= dt;
+      if (spawnDelay <= 0) spawnBroken();
+    }
+
+      if (oxygen <= 0) endScreen("ВОЗДУХ КОНЧИЛСЯ", false, ["Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedCount + "/" + systems.length]);
+    else if (water >= 100) endScreen("ОТСЕК ЗАТОПИЛО", false, ["Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedCount + "/" + systems.length]);
+    else if (neighborD <= 0) endScreen("ОНО ТЕБЯ НАШЛО", false, ["Шумели вы знатно.", "Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedCount + "/" + systems.length]);
+  } else {
+    if (repLocal) applyStepVisual(active, loud, dt, 1);
+    if (active){
+      const d = Math.hypot(active.x - playerPos.x, active.z - playerPos.z);
+      const tgt = clamp(0.14 - d * 0.012, 0, 0.12);
+      hissGain.gain.value += (tgt - hissGain.gain.value) * Math.min(1, dt * 6);
+    } else if (hissGain.gain.value > 0){
+      hissGain.gain.value *= 0.95;
+    }
+  }
+
+  if (neighborD < 45 && net.mode !== "guest"){
+    hbT -= dt;
+    if (hbT <= 0){
+      beep(64, 0.14, "sine", 1.6);
+      setTimeout(() => beep(52, 0.12, "sine", 1.2), 130);
+      hbT = 0.55 + neighborD/100 * 0.8;
+    }
+  }
+
+  for (let i = drops.length - 1; i >= 0; i--){
+    const d = drops[i];
+    d.vy += 9;
+    d.x += d.vx * dt; d.z += d.vz * dt; d.y -= d.vy * dt * 0.3;
+    if (d.y < 0.05) drops.splice(i, 1);
+  }
+  for (let i = sparks.length - 1; i >= 0; i--){
+    const s = sparks[i];
+    s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+    s.vy -= 6 * dt;
+    s.life -= dt;
+    if (s.life <= 0) sparks.splice(i, 1);
+  }
+
+  net.timer += dt;
+  if (net.timer >= 1/12){
+    net.timer = 0;
+    if (net.mode === "host" && net.active){
+      netSend({ t: "st", o: oxygen, w: water, n: noise, d: neighborD, t2: runTime, f: fixedCount,
+        p: { x: playerPos.x, z: playerPos.z, ry: yaw },
+        s: systems.map(s => [s.broken ? 1 : 0, Math.round(s.progress * 10) / 10]), tm: runTime });
+    } else if (net.mode === "guest" && net.active){
+      netSend({ t: "in", l: loud, r: repLocal, x: playerPos.x, z: playerPos.z, ry: yaw, rn: moving && run });
+    }
+  }
+
+  shake = Math.max(0, shake - dt * 2);
+  toastT = Math.max(0, toastT - dt);
+  hintT = Math.max(0, hintT - dt);
+  if (neighborD < 30) shake = Math.max(shake, (1 - neighborD/30) * 0.25);
+}
+
+function drawSysList(){
+  const active = nextSystem();
+  ui.sysList.innerHTML = "<div style='letter-spacing:.2em;font-size:10px;margin-bottom:6px;color:#ffd93d'>ПОЛОМКИ</div>" +
+    systems.map(s => {
+      const pv = net.mode === "guest" ? s.shownProg : s.progress;
+      if (!s.broken) return "<span style='opacity:.32'>· " + s.label + " — цело</span>";
+      const cls = pv > 0 ? "" : "bad";
+      const icon = s.kind === "fuse" ? "⚡" : "💧";
+      const st = pv > 0 ? Math.floor(pv) + "%" : (s.kind === "fuse" ? "надо шептать" : "надо кричать");
+      return "<span class='" + cls + "'>" + icon + " " + s.label + " — " + (s === active ? "<b>" + st + "</b>" : st) + "</span>";
+    }).reverse().join("<br>");
+}
+
+function mkPoster(x, y, z, ry, w, h, paint){
+  const cv = document.createElement("canvas"); cv.width = 256; cv.height = 340;
+  const c = cv.getContext("2d");
+  paint(c, cv);
+  const t = new THREE.CanvasTexture(cv);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, metalness: 0.05 }));
+  m.position.set(x, y, z); m.rotation.y = ry;
+  scene.add(m);
+}
+mkPoster(-12.78, 2.1, 2.0, Math.PI/2, 1.15, 1.5, c => {
+  c.fillStyle = "#ffd93d"; c.fillRect(0,0,256,340);
+  c.fillStyle = "#ff4757"; for (let i = 0; i < 6; i++) c.fillRect(0, i*58, 256, 20);
+  c.fillStyle = "#101820"; c.textAlign = "center";
+  c.font = "bold 44px sans-serif"; c.fillText("ГЛУБИНА", 128, 120);
+  c.font = "bold 72px sans-serif"; c.fillText("40 м", 128, 205);
+  c.font = "20px sans-serif"; c.fillText("без права на ошибку", 128, 266);
+});
+mkPoster(-12.78, 2.1, -2.4, Math.PI/2, 1.15, 1.5, c => {
+  c.fillStyle = "#f4ede0"; c.fillRect(0,0,256,340);
+  c.strokeStyle = "#ff4757"; c.lineWidth = 14; c.strokeRect(12,12,232,316);
+  c.fillStyle = "#ff4757"; c.textAlign = "center";
+  c.font = "bold 58px sans-serif"; c.fillText("НЕ", 128, 120);
+  c.fillText("ШУМЕТЬ!", 128, 190);
+  c.fillStyle = "#101820"; c.font = "24px sans-serif"; c.fillText("Сосед слышит", 128, 266);
+});
+mkPoster(12.78, 2.1, 2.0, -Math.PI/2, 1.15, 1.5, c => {
+  c.fillStyle = "#0d3350"; c.fillRect(0,0,256,340);
+  c.fillStyle = "#7ff0ff"; c.textAlign = "center";
+  c.font = "bold 36px sans-serif"; c.fillText("ПАМЯТКА", 128, 62);
+  c.font = "24px sans-serif";
+  c.fillText("Труба хлещет?", 128, 126);
+  c.fillStyle = "#ffd93d"; c.fillText("→ КРИЧАТЬ", 128, 166);
+  c.fillStyle = "#7ff0ff"; c.fillText("Щиток дымит?", 128, 232);
+  c.fillStyle = "#2ed573"; c.fillText("→ ШЁПТАТЬ", 128, 272);
+});
+
+const screens = [];
+function mkScreen(x){
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 144;
+  const tex = new THREE.CanvasTexture(cv);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.9), new THREE.MeshBasicMaterial({ map: tex }));
+  scr.position.set(x, 1.9, -5.85);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.64, 1.04, 0.1), stdMat(0x0a1622, 0.5, 0.6));
+  frame.position.set(x, 1.9, -5.9);
+  scene.add(frame);
+  scene.add(scr);
+  screens.push({ ctx: cv.getContext("2d"), tex });
+}
+mkScreen(-3.8);
+mkScreen(3.8);
+function drawScreens(){
+  for (const s of screens){
+    const c = s.ctx;
+    c.fillStyle = "#04101c";
+    c.fillRect(0, 0, 256, 144);
+    c.strokeStyle = "#12324a";
+    c.strokeRect(4, 4, 248, 136);
+    c.fillStyle = oxygen < 30 ? "#ff4757" : "#7ff0ff";
+    c.font = "bold 20px monospace";
+    c.fillText("ПОЧИНЕНО: " + fixedCount + "/" + systems.length, 16, 34);
+    c.fillStyle = water > 50 ? "#ffd93d" : "#7ff0ff";
+    c.font = "15px monospace";
+    c.fillText("ВОДА    " + Math.floor(water) + "%", 16, 62);
+    c.fillText("ВОЗДУХ  " + Math.floor(oxygen) + "%", 16, 84);
+    c.fillStyle = "#4de3ff";
+    c.font = "11px monospace";
+    c.fillText("ГЛУБИНА 40.0 м", 16, 108);
+    c.fillStyle = "#ff6b6b";
+    if (Math.floor(tt) % 2 === 0) c.fillText("REC", 200, 30);
+    s.tex.needsUpdate = true;
+  }
+}
+
+const m4 = new THREE.Matrix4();
+const tagV = new THREE.Vector3();
+function updateFx(dt){
+  ui.oxygen.style.width = Math.max(0, oxygen) + "%";
+  ui.oxygen.style.background = oxygen < 30 ? "linear-gradient(90deg,#ff4757,#ff8787)" : "linear-gradient(90deg,#2ad4ff,#7ff0ff)";
+  ui.noise.style.width = noise * 100 + "%";
+  ui.loud.style.width = loudDisp * 100 + "%";
+  loudDisp += (loud - loudDisp) * 0.25;
+
+  let zn = "ТИХО", zc = "#4de3ff";
+  if (loud >= 0.35){ zn = "КРИК!"; zc = "#ff4757"; }
+  else if (loud >= 0.05){ zn = "ШЁПОТ"; zc = "#7ff0ff"; }
+  ui.zoneName.textContent = zn;
+  ui.zoneName.style.color = zc;
+
+  const aim = S.val === "play" ? aimedSystem() : null;
+  ui.cross.classList.toggle("hot", !!aim);
+  if (aim && aim.kind === "pipe"){
+    ui.hint.textContent = "КРИЧИ! (или держи F) — шёпот тоже чинит, но медленно";
+    ui.hint.classList.add("on");
+  } else if (aim && aim.kind === "fuse"){
+    ui.hint.textContent = "только ШЁПОТ (V) — кричать нельзя!";
+    ui.hint.classList.add("on");
+  } else {
+    ui.hint.classList.remove("on");
+  }
+
+  let obj = "";
+  const active = nextSystem();
+  if (S.val === "play" && active){
+    const dist = Math.hypot(active.x - playerPos.x, active.z - playerPos.z);
+    obj = active.label + " · " + dist.toFixed(1) + " м · " + (active.kind === "fuse" ? "⚡ только шёпот" : "💧 крик, шёпот тоже катит");
+  } else if (S.val === "play" && !active){
+    obj = "Осмотрись — системы начнут сыпаться...";
+  }
+  if (S.val === "play" && hintT > 0) obj += " · WASD — идти, мышь — смотреть";
+  ui.obj.textContent = obj;
+  ui.timer.textContent = "⏱ " + runTime.toFixed(0) + " с" + (net.active ? " · игроков: 2" : "");
+  ui.toast.style.opacity = toastT > 0 ? Math.min(1, toastT) : 0;
+
+  for (const s of systems){
+    const isActive = s.broken && s === active;
+    s.marker.visible = isActive;
+    if (isActive){
+      const base = s.kind === "pipe" ? 2.6 : 2.95;
+      s.marker.position.set(s.x, base + Math.sin(tt*3)*0.12, s.z + (s.kind === "fuse" ? Math.sign(s.z)*0.55 : 0.4*Math.sign(s.z || 1)));
+      s.marker.rotation.y = tt * 2;
+    }
+    if (s.kind === "pipe"){
+      s.leak.visible = s.broken;
+      s.lampBall.material.color.setHex(s.broken ? 0xff4757 : 0x2ed573);
+      if (s.broken && isActive) s.valve.rotation.z += dt * (loud > 0.35 ? 2.4 : 0.3);
+    } else {
+      s.warn.material.color.setHex(s.broken ? 0xffd93d : 0x2ed573);
+      s.smoke.visible = s.broken;
+      if (s.broken) s.switches.forEach((sw, i) => {
+        sw.material.emissive.setHex(Math.floor(tt*6 + i) % 2 ? 0x992211 : 0x551105);
+      });
+    }
+  }
+
+  if (net.active){
+    buddy.visible = true;
+    buddy.position.set(net.buddyPos.x, 0, net.buddyPos.z);
+    buddy.rotation.y = net.buddyPos.ry + Math.PI;
+    tagV.set(net.buddyPos.x, 2.1, net.buddyPos.z).project(camera);
+    if (tagV.z < 1 && Math.abs(tagV.x) < 1.4){
+      buddyTag.style.display = "block";
+      buddyTag.style.left = ((tagV.x + 1) / 2 * innerWidth) + "px";
+      buddyTag.style.top = ((1 - tagV.y) / 2 * innerHeight) + "px";
+    } else {
+      buddyTag.style.display = "none";
+    }
+  }
+
+  if (neighborD < 70){
+    neighborMesh.visible = true;
+    const approach = 1 - neighborD/100;
+    neighborMesh.position.z = -ROOM.d/2 - 6 - (1 - approach) * 11;
+    neighborMesh.position.x = Math.sin(tt * 0.13) * 9;
+    neighborMesh.rotation.y = Math.sin(tt*0.05) * 0.3;
+  } else {
+    neighborMesh.visible = false;
+  }
+
+  ui.vign.style.opacity = S.val === "play" && neighborD < 30 ? (1 - neighborD/30) * 0.9 : 0;
+  redBeacon.intensity = S.val === "play" && neighborD < 50 ? (1 - neighborD/50) * (22 + Math.sin(tt*7)*10) : 0;
+  beaconMesh.material.opacity = S.val === "play" && neighborD < 50 ? 0.35 + 0.4*Math.abs(Math.sin(tt*6)) : 0;
+
+  waterPlane.position.y = (water/100) * ROOM.h * 0.28;
+  waterMat2.opacity = water > 1 ? 0.28 + Math.min(0.35, water/220) : 0;
+  for (let i = 0; i < wPos.count; i++){
+    const x0 = wPos.getX(i);
+    const y0 = wPos.getY(i);
+    wPos.setZ(i, Math.sin(x0 * 0.7 + tt * 2) * 0.07 + Math.cos(y0 * 0.8 + tt * 1.4) * 0.05);
+  }
+  wPos.needsUpdate = true;
+  ui.waterTint.style.opacity = clamp((water - 25)/75, 0, 0.8);
+
+  for (let i = 0; i < MAXDROP; i++){
+    const d = drops[i];
+    if (d) m4.makeScale(1, 1.4, 1).setPosition(d.x, d.y, d.z);
+    else m4.makeScale(0, 0, 0);
+    dropMesh.setMatrixAt(i, m4);
+  }
+  dropMesh.instanceMatrix.needsUpdate = true;
+  for (let i = 0; i < 80; i++){
+    const s = sparks[i];
+    if (s) m4.makeScale(1, 1, 1).setPosition(s.x, s.y, s.z);
+    else m4.makeScale(0, 0, 0);
+    sparkMesh.setMatrixAt(i, m4);
+  }
+  sparkMesh.instanceMatrix.needsUpdate = true;
+
+  if (S.val === "play" && Math.abs(tt - Math.floor(tt)) < dt) drawScreens();
+  sysListT += dt;
+  if (S.val === "play" && sysListT > 0.3){ sysListT = 0; drawSysList(); }
+}
+
+const clock = new THREE.Clock();
+function loopFrame(){
+  requestAnimationFrame(loopFrame);
+  const dt = Math.min(0.05, clock.getDelta());
+  update(dt);
+  updateFx(dt);
+  lamp.intensity = 90 + Math.sin(tt * 1.9) * 9 + (Math.random() < 0.005 ? -50 : 0);
+  nautilusGroup.position.z = -ROOM.d/2 - 7 + Math.sin(tt*0.11)*1.4;
+  nautilusGroup.position.y = 2.2 + Math.sin(tt*0.21)*0.45;
+  nautilusGroup.rotation.z = Math.sin(tt*0.07)*0.025;
+  for (const f of fishFlock){
+    const a1 = tt*f.sp + f.ph, a2 = tt*f.sp*0.8 + f.ph;
+    f.m.position.x = f.cx + Math.sin(a1)*f.rad;
+    f.m.position.z = f.cz + Math.cos(a2)*f.rad*0.45;
+    f.m.position.y = f.y0 + Math.sin(tt*0.5 + f.ph)*0.25;
+    f.m.rotation.y = Math.PI - Math.atan2(Math.cos(a1), 0.36*Math.sin(a2));
+  }
+  camera.rotation.z += (Math.random()-0.5) * shake * 0.25;
+  camera.rotation.x += (Math.random()-0.5) * shake * 0.25;
+  composer.render();
+}
+loopFrame();
+
+window.addEventListener("resize", () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+function toggleMute(){
+  muted = !muted;
+  if (master) master.gain.value = muted ? 0 : 1;
+  ui.muteBtn.textContent = muted ? "🔇" : "🔊";
+  ui.muteBtn.classList.toggle("off", muted);
+}
+function toggleFs(){
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.getElementById("wrap").requestFullscreen().catch(() => {});
+}
+function toggleHelp(){
+  if (ui.help.classList.contains("hidden")){
+    if (S.val === "play") pauseGame();
+    ui.help.classList.remove("hidden");
+  } else {
+    ui.help.classList.add("hidden");
+  }
+}
+
+window.addEventListener("keydown", e => {
+  const c = e.code;
+  if (c === "KeyM"){ toggleMute(); return; }
+  if (c === "KeyB"){ setLofi(!lofiOn); return; }
+  if (c === "KeyG" && S.val === "play"){ toggleFs(); e.preventDefault(); return; }
+  if (c === "KeyH"){ toggleHelp(); return; }
+  if (c === "KeyP"){ if (S.val === "play") pauseGame(); else if (S.val === "paused") resumeGame(); return; }
+  if (c === "KeyR" && S.val === "end"){ toMenu(); return; }
+  if (S.val === "intro" && c === "Digit1"){ pendingMode = "solo"; startSession(true); return; }
+  if (S.val === "intro" && c === "Digit2"){ pendingMode = "solo"; startSession(false); return; }
+  const map = { KeyW:"w", KeyA:"a", KeyS:"s", KeyD:"d", ArrowUp:"arrowup", ArrowDown:"arrowdown", ArrowLeft:"arrowleft", ArrowRight:"arrowright", KeyF:"f", KeyV:"v" };
+  if (map[c]){ keys[map[c]] = true; e.preventDefault(); }
+  if (c === "ShiftLeft" || c === "ShiftRight") keys.shift = true;
+});
+window.addEventListener("keyup", e => {
+  const map = { KeyW:"w", KeyA:"a", KeyS:"s", KeyD:"d", ArrowUp:"arrowup", ArrowDown:"arrowdown", ArrowLeft:"arrowleft", ArrowRight:"arrowright", KeyF:"f", KeyV:"v" };
+  if (map[e.code]) keys[map[e.code]] = false;
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = false;
+});
+
+renderer.domElement.addEventListener("click", () => {
+  if (S.val === "play" && !isTouch && !document.pointerLockElement) lockPointer();
+});
+renderer.domElement.addEventListener("mousemove", e => {
+  if (document.pointerLockElement !== renderer.domElement || S.val !== "play") return;
+  yaw -= e.movementX * sens;
+  pitch = clamp(pitch - e.movementY * sens, -1.35, 1.35);
+});
+document.addEventListener("pointerlockchange", () => {
+  if (isTouch) return;
+  if (!document.pointerLockElement && S.val === "play") pauseGame();
+  else if (document.pointerLockElement && S.val === "paused"){
+    ui.pause.classList.add("hidden");
+    S.val = "play";
+  }
+});
+
+const joyBase = el("joyBase"), joyKnob = el("joyKnob");
+let joyId = null, joyCX = 0, joyCY = 0, lookId = null, lookPX = 0, lookPY = 0;
+function joyBaseHome(){
+  joyBase.style.left = "26px";
+  joyBase.style.top = "auto";
+  joyBase.style.bottom = "26px";
+  joyKnob.style.transform = "translate(0px,0px)";
+}
+joyBaseHome();
+const wrapEl = document.getElementById("wrap");
+wrapEl.addEventListener("touchstart", e => {
+  if (S.val !== "play" || e.target.closest("button")) return;
+  for (const t of e.changedTouches){
+    if (t.clientX < innerWidth * 0.45 && joyId === null){
+      joyId = t.identifier;
+      joyCX = t.clientX; joyCY = t.clientY;
+      joyBase.style.left = (joyCX - 59) + "px";
+      joyBase.style.top = (joyCY - 59) + "px";
+      joyBase.style.bottom = "auto";
+    } else if (t.clientX >= innerWidth * 0.45 && lookId === null){
+      lookId = t.identifier;
+      lookPX = t.clientX; lookPY = t.clientY;
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+wrapEl.addEventListener("touchmove", e => {
+  if (S.val !== "play" || e.target.closest("button")) return;
+  for (const t of e.changedTouches){
+    if (t.identifier === joyId){
+      let mx = (t.clientX - joyCX) / 46, my = (t.clientY - joyCY) / 46;
+      const l = Math.hypot(mx, my);
+      if (l > 1){ mx /= l; my /= l; }
+      touchState.moveX = mx; touchState.moveZ = my;
+      joyKnob.style.transform = "translate(" + (mx * 33) + "px," + (my * 33) + "px)";
+    } else if (t.identifier === lookId){
+      yaw -= (t.clientX - lookPX) * 0.0048;
+      pitch = clamp(pitch - (t.clientY - lookPY) * 0.0048, -1.35, 1.35);
+      lookPX = t.clientX; lookPY = t.clientY;
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+function touchEnd(e){
+  for (const t of e.changedTouches){
+    if (t.identifier === joyId){ joyId = null; touchState.moveX = 0; touchState.moveZ = 0; joyBaseHome(); }
+    if (t.identifier === lookId) lookId = null;
+  }
+}
+wrapEl.addEventListener("touchend", touchEnd);
+wrapEl.addEventListener("touchcancel", touchEnd);
+
+for (const [id, prop] of [["shoutBtn","shout"],["whisperBtn","whisper"]]){
+  const b = el(id);
+  b.addEventListener("touchstart", e => { e.preventDefault(); e.stopPropagation(); touchState[prop] = true; b.classList.add("hot"); }, { passive: false });
+  const off = e => { e.preventDefault(); touchState[prop] = false; b.classList.remove("hot"); };
+  b.addEventListener("touchend", off, { passive: false });
+  b.addEventListener("touchcancel", off, { passive: false });
+}
+el("runBtn").addEventListener("touchstart", e => {
+  e.preventDefault(); e.stopPropagation();
+  touchState.run = !touchState.run;
+  el("runBtn").classList.toggle("hot", touchState.run);
+}, { passive: false });
+
+function showMenuModes(){
+  el("menuModes").classList.remove("hidden");
+  el("voicePick").classList.add("hidden");
+  el("joinBox").classList.add("hidden");
+  el("lobbyListPanel").classList.add("hidden");
+  el("serverPanel").classList.add("hidden");
+}
+function showLobbyList(){
+  try {
+    const raw = localStorage.getItem("t40m_rooms");
+    const list = raw ? (JSON.parse(raw) || []).filter(r => r && r.code) : [];
+    const box = el("lobbyRows");
+    if (!list.length){
+      box.innerHTML = "<div class='keys' style='opacity:.6'>Пока пусто. Создай комнату или подключись — код запомнится здесь.</div>";
+    } else {
+      box.innerHTML = list.map(r => {
+        const role = r.role === "host" ? "📡 своя" : (r.role === "join" ? "🔗 гость" : "");
+        return "<div class='lobbyRow' data-code='" + r.code + "'><b>" + r.code + "</b><span class='rrole'>" + role + "</span></div>";
+      }).join("");
+      box.querySelectorAll(".lobbyRow").forEach(row => {
+        row.onclick = () => {
+          el("lobbyListPanel").classList.add("hidden");
+          el("menuModes").classList.add("hidden");
+          el("joinBox").classList.remove("hidden");
+          el("codeInput").value = row.dataset.code;
+          el("codeInput").focus();
+        };
+      });
+    }
+  } catch(e){ el("lobbyRows").innerHTML = "<div class='keys' style='opacity:.6'>Не удалось прочитать список.</div>"; }
+  el("menuModes").classList.add("hidden");
+  el("joinBox").classList.add("hidden");
+  el("voicePick").classList.add("hidden");
+  el("serverPanel").classList.add("hidden");
+  el("lobbyListPanel").classList.remove("hidden");
+}
+el("btnLobbyList").onclick = showLobbyList;
+el("lobbyListBack").onclick = showMenuModes;
+let browseBusy = false;
+function browseLobby(){
+  if (browseBusy) return;
+  browseBusy = true;
+  el("serverRows").innerHTML = "<div class='keys' style='opacity:.7'>Смотрю, кто сейчас ждёт партера...</div>";
+  const found = {};
+  const probe = new Peer(peerOpts);
+  function render(){
+    try { probe.destroy(); } catch(e){}
+    browseBusy = false;
+    const list = Object.values(found);
+    if (!list.length){
+      el("serverRows").innerHTML = "<div class='keys' style='opacity:.6'>Сейчас никто не ждёт. Создай комнату — и она появится в этом списке у незнакомцев.</div>";
+      return;
+    }
+    list.sort((a, b) => (a.taken ? 1 : 0) - (b.taken ? 1 : 0));
+    el("serverRows").innerHTML = list.map(r =>
+      "<div class='lobbyRow' data-code='" + r.code + "'><b>" + r.code + "</b><span class='rrole'>" + (r.taken ? "занята" : "ждёт партера") + "</span></div>"
+    ).join("");
+    el("serverRows").querySelectorAll(".lobbyRow").forEach(row => {
+      row.onclick = () => {
+        el("serverPanel").classList.add("hidden");
+        el("menuModes").classList.add("hidden");
+        el("joinBox").classList.remove("hidden");
+        el("codeInput").value = row.dataset.code;
+        el("codeInput").focus();
+      };
+    });
+  }
+  const done = () => { if (browseBusy) render(); };
+  setTimeout(done, 3400);
+  setTimeout(done, 5600);
+  probe.on("error", () => {});
+  probe.on("open", () => {
+    for (let i = 0; i < 14; i++){
+      const c = probe.connect("t40m-v3-slot-" + i, { reliable: true });
+      c.on("data", d => { if (d && d.t === "room" && d.code) found[d.code] = d; });
+      c.on("error", () => {});
+      setTimeout(() => { try { c.close(); } catch(e){} }, 2500);
+    }
+  });
+  probe.on("disconnected", () => { try { probe.reconnect(); } catch(e){} });
+}
+el("btnGlobalLobby").onclick = () => {
+  el("menuModes").classList.add("hidden");
+  el("joinBox").classList.add("hidden");
+  el("voicePick").classList.add("hidden");
+  el("lobbyListPanel").classList.add("hidden");
+  el("serverPanel").classList.remove("hidden");
+  browseLobby();
+};
+el("serverRefresh").onclick = browseLobby;
+el("serverMine").onclick = showLobbyList;
+el("serverBack").onclick = showMenuModes;
+function showVoicePick(){
+  el("menuModes").classList.add("hidden");
+  el("voicePick").classList.remove("hidden");
+}
+el("btnSolo").onclick = showVoicePick;
+el("btnHost").onclick = () => { pendingMode = "host"; showVoicePick(); };
+el("btnJoin").onclick = () => { el("menuModes").classList.add("hidden"); el("joinBox").classList.remove("hidden"); el("codeInput").focus(); };
+el("voiceBack").onclick = showMenuModes;
+el("joinBack").onclick = showMenuModes;
+el("btnJoinGo").onclick = () => {
+  enteredCode = el("codeInput").value.trim().toUpperCase();
+  if (enteredCode.length < 4){ el("codeInput").focus(); return; }
+  pendingMode = "join";
+  showVoicePick();
+};
+function startSession(useMicWanted){
+  if (pendingMode === "solo"){ beginRun(useMicWanted, false); }
+  else if (pendingMode === "host"){ hostRoom(useMicWanted); }
+  else { joinRoom(enteredCode, useMicWanted); }
+}
+el("btnMic").onclick = () => startSession(true);
+el("btnKeys").onclick = () => startSession(false);
+el("lobbyCancel").onclick = () => {
+  ui.lobby.classList.add("hidden");
+  ui.menu.classList.remove("hidden");
+  netCleanup();
+};
+el("resumeBtn").onclick = resumeGame;
+el("pauseMenuBtn").onclick = toMenu;
+el("helpClose").onclick = () => {
+  ui.help.classList.add("hidden");
+  if (S.val === "paused") ui.pause.classList.remove("hidden");
+};
+ui.helpBtn.onclick = toggleHelp;
+ui.muteBtn.onclick = toggleMute;
+ui.fsBtn.onclick = toggleFs;
+ui.pauseBtn.onclick = () => { if (S.val === "play") pauseGame(); else if (S.val === "paused") resumeGame(); };
+
+function syncSens(v){
+  micSens = parseFloat(v);
+  el("sensVal").textContent = micSens.toFixed(2);
+  el("sensVal2").textContent = micSens.toFixed(2);
+  el("sensSlider").value = v;
+  el("sensSlider2").value = v;
+}
+el("sensSlider").addEventListener("input", e => syncSens(e.target.value));
+el("sensSlider2").addEventListener("input", e => syncSens(e.target.value));
+
+drawSysList();
+drawScreens();
+</script>
+</body>
+</html>

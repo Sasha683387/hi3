@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>40 метров тишины 3D — прототип</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#04070d; }
+  body { font-family:"Segoe UI", system-ui, sans-serif; color:#cfe9f7; }
+  #wrap { position:absolute; inset:0; }
+  canvas { display:block; }
+
+  .bar { position:absolute; height:16px; border-radius:8px; background:rgba(255,255,255,0.08); overflow:hidden; }
+  .bar > i { display:block; height:100%; border-radius:8px; transition:width .1s linear; }
+  .bar > span { position:absolute; left:8px; top:-2px; font-size:10px; letter-spacing:.15em; color:#bcdcee; line-height:20px; }
+  #oxygenWrap { left:16px; top:14px; width:min(320px, 40vw); }
+  #oxygenFill { background:#38e0ff; }
+  #neighborWrap { right:16px; top:14px; width:min(320px, 40vw); }
+  #neighborFill { background:#2ed573; }
+  #objective {
+    position:absolute; top:44px; left:50%; transform:translateX(-50%);
+    font-size:15px; color:rgba(207,233,247,.92); text-shadow:0 2px 6px #000;
+    text-align:center; pointer-events:none; white-space:nowrap;
+  }
+  #toast {
+    position:absolute; top:74px; left:50%; transform:translateX(-50%);
+    font-size:15px; color:#38e0ff; text-shadow:0 2px 6px #000; pointer-events:none;
+  }
+  #loudWrap {
+    position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
+    width:min(380px, 56vw); height:18px;
+  }
+  #loudFill { background:#ffb833; }
+  #loudWrap .zone { position:absolute; top:24px; font-size:10px; color:#6f94ab; }
+  #loudWrap #shoutMark { position:absolute; top:-4px; bottom:-4px; left:45%; width:2px; background:rgba(255,71,87,.8); }
+  #hint { position:absolute; bottom:0; left:0; right:0; text-align:center; font-size:10px; color:#4e708a; }
+
+  #buttons { position:absolute; top:10px; right:16px; display:flex; gap:8px; }
+  #buttons button {
+    background:rgba(10,22,34,.8); color:#cfe9f7; border:1px solid #12324a; border-radius:8px;
+    padding:6px 10px; font-size:13px; cursor:pointer;
+  }
+  #buttons button:hover { border-color:#38e0ff; }
+  #muteBtn.off { color:#ff4757; }
+
+  #vignette { position:absolute; inset:0; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(120,0,10,.55) 100%); }
+  #vignette.on { opacity:1; }
+
+  .overlay {
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(3,8,14,.85); text-align:center; padding:20px; gap:10px;
+  }
+  .overlay h1 { font-size:40px; color:#ff4757; text-shadow:0 4px 20px rgba(255,71,87,.3); }
+  .overlay h2 { font-size:17px; font-weight:400; color:#cfe9f7; }
+  .overlay p { font-size:14px; color:#9fc4d8; line-height:1.55; max-width:560px; }
+  .overlay .keys { color:#cfe9f7; font-size:14px; }
+  .overlay .btns { display:flex; gap:12px; margin-top:14px; flex-wrap:wrap; justify-content:center; }
+  .overlay button {
+    background:#0a1622; border:1px solid #38e0ff; color:#38e0ff; border-radius:10px;
+    padding:12px 22px; font-size:15px; cursor:pointer;
+  }
+  .overlay button:hover { background:#12324a; }
+  .win h1 { color:#2ed573; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="oxygenWrap" class="bar" style="display:none"><i id="oxygenFill"></i><span>ВОЗДУХ</span></div>
+  <div id="neighborWrap" class="bar" style="display:none"><i id="neighborFill" style="width:100%"></i><span style="left:auto;right:8px">СОСЕД</span></div>
+  <div id="objective" style="display:none"></div>
+  <div id="toast" style="display:none"></div>
+  <div id="loudWrap" style="display:none">
+    <div class="bar" style="position:relative;height:18px"><i id="loudFill" style="width:0"></i></div>
+    <div id="shoutMark"></div>
+    <span class="zone" style="left:0">шёпот</span>
+    <span class="zone" style="right:0">КРИЧИ!</span>
+    <div id="hint">WASD — ходить · голос (или F/S) чинит трубу · M — звук · ⛶ — полный экран</div>
+  </div>
+  <div id="buttons" style="display:none">
+    <button id="muteBtn" title="M">🔊</button>
+    <button id="fsBtn" title="F">⛶</button>
+  </div>
+  <div id="vignette"></div>
+
+  <div id="menu" class="overlay">
+    <h1>40 МЕТРОВ ТИШИНЫ 3D</h1>
+    <h2>человеки ходят и чинят — а хватит ли на это голоса?</h2>
+    <p>Труба лопнула. Чтобы заделать её, стоя рядом, нужно <b>говорить в микрофон</b>: кричишь громче — быстрее, но голос жжёт кислород, а громкий звук будит СОСЕДА, который плывёт на шум.</p>
+    <p class="keys">WASD / стрелки — ходьба · F — крик, S — шёпот (если нет микрофона) · M — звук</p>
+    <div class="btns">
+      <button id="btnMic">🎙 Играть с микрофоном</button>
+      <button id="btnKeys">⌨ Играть с клавиатурой</button>
+    </div>
+  </div>
+
+  <div id="calib" class="overlay hidden">
+    <h1 style="color:#38e0ff;font-size:28px">КАЛИБРОВКА</h1>
+    <h2>Помолчи пару секунд — измеряю шум комнаты...</h2>
+  </div>
+
+  <div id="endScreen" class="overlay hidden"></div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.161.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+
+const wrap = document.getElementById("wrap");
+const el = id => document.getElementById(id);
+const ui = {
+  oxygenWrap: el("oxygenWrap"), oxygenFill: el("oxygenFill"),
+  neighborWrap: el("neighborWrap"), neighborFill: el("neighborFill"),
+  objective: el("objective"), toast: el("toast"),
+  loudWrap: el("loudWrap"), loudFill: el("loudFill"),
+  buttons: el("buttons"), muteBtn: el("muteBtn"), fsBtn: el("fsBtn"),
+  vignette: el("vignette"), menu: el("menu"), calib: el("calib"), endScreen: el("endScreen"),
+};
+
+const state = { val: "menu" };
+let useMic = false, muted = false;
+let oxygen = 100, water = 0, neighbor = 100, runTime = 0, t = 0;
+let loud = 0, ambient = 0.004, calibVals = [];
+let toastT = 0, hbTimer = 0;
+const keys = {};
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04070d);
+scene.fog = new THREE.Fog(0x04070d, 18, 46);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+wrap.appendChild(renderer.domElement);
+
+const ROOM = { w: 22, d: 13, h: 6 };
+
+const ambLight = new THREE.AmbientLight(0x334d66, 0.7);
+scene.add(ambLight);
+const lamp = new THREE.PointLight(0x9fd8ff, 60, 30);
+lamp.position.set(0, 5.2, 0);
+scene.add(lamp);
+const redLight = new THREE.PointLight(0xff2233, 0, 25);
+redLight.position.set(0, 4, 0);
+scene.add(redLight);
+
+function buildRoom(){
+  const mat = (c, r=0.6, m=0.2) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), mat(0x16283a));
+  floor.rotation.x = -Math.PI/2;
+  scene.add(floor);
+
+  const wallMat = mat(0x1c3145, 0.8, 0.15);
+  const mkWall = (w, h, x, y, z, ry) => {
+    const wl = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.3), wallMat);
+    wl.position.set(x, y, z); wl.rotation.y = ry;
+    scene.add(wl);
+  };
+  mkWall(ROOM.w, ROOM.h, 0, ROOM.h/2, -ROOM.d/2, 0);
+  mkWall(ROOM.w, ROOM.h, 0, ROOM.h/2, ROOM.d/2, 0);
+  mkWall(ROOM.d, ROOM.h, -ROOM.w/2, ROOM.h/2, 0, Math.PI/2);
+  mkWall(ROOM.d, ROOM.h, ROOM.w/2, ROOM.h/2, 0, Math.PI/2);
+
+  const ribMat = mat(0x0f2230, 0.7, 0.4);
+  for (let i = -3; i <= 3; i++){
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(ROOM.h*0.75, 0.12, 8, 24, Math.PI), ribMat);
+    rib.position.set(i*3.2, 0, -ROOM.d/2 + 0.4);
+    rib.rotation.z = Math.PI/2;
+    rib.scale.set(1, 1, 0.2);
+    scene.add(rib);
+  }
+  for (let i = 0; i < 3; i++){
+    const port = new THREE.Mesh(
+      new THREE.CircleGeometry(0.8, 24),
+      new THREE.MeshBasicMaterial({ color: 0x0a2536 })
+    );
+    port.position.set(-4 + i*4, 2.6, -ROOM.d/2 + 0.17);
+    scene.add(port);
+  }
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), mat(0x0c1a28));
+  ceiling.rotation.x = Math.PI/2;
+  ceiling.position.y = ROOM.h;
+  scene.add(ceiling);
+}
+buildRoom();
+
+function mkChar(bodyColor){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.7 });
+  const suit = new THREE.MeshStandardMaterial({ color: 0xd8b04a, roughness: 0.6 });
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.6, 6, 12), suit);
+  torso.position.y = 1.05;
+  g.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), mat);
+  head.position.y = 1.85;
+  g.add(head);
+  for (const s of [-1, 1]){
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), mat);
+    ear.position.set(0.34*s, 1.9, 0);
+    g.add(ear);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), new THREE.MeshBasicMaterial({ color: 0x0a1a24 }));
+    eye.position.set(0.12*s, 1.88, 0.29);
+    g.add(eye);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), suit);
+    arm.position.set(0.42*s, 1.1, 0);
+    g.add(arm);
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.4, 4, 8), suit);
+    leg.position.set(0.18*s, 0.35, 0);
+    g.add(leg);
+  }
+  return g;
+}
+const player = mkChar(0x8a5a33);
+scene.add(player);
+
+const pipes = [];
+function mkPipe(x, z, ry, label){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x2a4d63, roughness: 0.5, metalness: 0.5 });
+  const tubeDown = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 4.6, 12), mat);
+  tubeDown.position.set(0, 3.7, 0);
+  g.add(tubeDown);
+  const tubeHoriz = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 1.6, 12), mat);
+  tubeHoriz.rotation.z = Math.PI/2;
+  tubeHoriz.position.set(0.8, 1.4, 0);
+  g.add(tubeHoriz);
+  const valve = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 8, 16), mat);
+  valve.rotation.y = Math.PI/2;
+  valve.position.set(1.6, 1.4, 0);
+  g.add(valve);
+  const joint = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), mat);
+  joint.position.set(1.6, 1.4, 0);
+  g.add(joint);
+  const leak = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({ color: 0x66d9ff }));
+  leak.position.set(1.6, 1.55, 0);
+  g.add(leak);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff4757, transparent: true, opacity: 0.0 }));
+  glow.position.set(1.6, 1.55, 0);
+  g.add(glow);
+  g.position.set(x, 0, z);
+  g.rotation.y = ry;
+  scene.add(g);
+  const hud = document.createElement("div");
+  hud.className = "bar";
+  hud.style.cssText = "position:absolute;width:120px;transform:translate(-50%,-50%);pointer-events:none";
+  hud.innerHTML = '<i style="background:#2ed573;width:0"></i>';
+  wrap.appendChild(hud);
+  const p = { g, valve, joint, leak, glow, hud, broken: true, progress: 0, x, z, label };
+  pipes.push(p);
+  return p;
+}
+mkPipe(-7, -5.2, 0, "труба слева");
+mkPipe(0, -5.2, 0, "труба в центре");
+mkPipe(8, 5.0, Math.PI, "труба справа");
+mkPipe(8, -5.2, 0, "труба справа-задняя");
+
+const PIPES_COUNT = 3;
+
+const waterMat = new THREE.MeshPhysicalMaterial({
+  color: 0x1e78be, transparent: true, opacity: 0.5, roughness: 0.15, metalness: 0.1, transmission: 0,
+});
+const waterPlane = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), waterMat);
+waterPlane.rotation.x = -Math.PI/2;
+scene.add(waterPlane);
+
+const neighborMesh = new THREE.Group();
+const nbBody = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12), new THREE.MeshBasicMaterial({ color: 0x000308 }));
+nbBody.scale.set(1.6, 0.7, 0.9);
+neighborMesh.add(nbBody);
+for (const s of [-1, 1]){
+  const nbEye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  nbEye.position.set(0.7*s, 0.15, 1.1);
+  neighborMesh.add(nbEye);
+}
+neighborMesh.position.set(0, 2.6, -ROOM.d/2 - 14);
+scene.add(neighborMesh);
+
+const bubbleGeo = new THREE.SphereGeometry(0.05, 6, 6);
+const bubbleMat = new THREE.MeshBasicMaterial({ color: 0x9adfff, transparent: true, opacity: 0.7 });
+const bubbles = new THREE.InstancedMesh(bubbleGeo, bubbleMat, 120);
+scene.add(bubbles);
+const bubbleData = [];
+for (let i = 0; i < 120; i++){
+  bubbleData.push({ x: (Math.random()-0.5)*ROOM.w, y: Math.random()*ROOM.h, z: (Math.random()-0.5)*ROOM.d, v: 0.4 + Math.random()*0.8, s: 0.5 + Math.random() });
+}
+const bubbleM4 = new THREE.Matrix4();
+
+const drops = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 6, 6), new THREE.MeshBasicMaterial({ color: 0x8fe0ff }), 80);
+scene.add(drops);
+const dropData = [];
+
+let fx = null, fxGain = null, analyser = null, micBuf = null;
+
+function initFx(){
+  if (fx) return;
+  fx = new (window.AudioContext || window.webkitAudioContext)();
+  fxGain = fx.createGain();
+  fxGain.gain.value = muted ? 0 : 0.12;
+  fxGain.connect(fx.destination);
+}
+function beep(freq, dur, type){
+  if (!fx || muted) return;
+  const o = fx.createOscillator(), g = fx.createGain();
+  o.type = type || "sine"; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, fx.currentTime);
+  g.gain.linearRampToValueAtTime(1, fx.currentTime + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, fx.currentTime + dur);
+  o.connect(g); g.connect(fxGain);
+  o.start(); o.stop(fx.currentTime + dur + 0.05);
+}
+
+async function initMic(){
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: false } });
+  const mctx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = mctx.createMediaStreamSource(stream);
+  analyser = mctx.createAnalyser();
+  analyser.fftSize = 1024;
+  src.connect(analyser);
+  micBuf = new Float32Array(analyser.fftSize);
+}
+function readMic(dt){
+  if (!analyser) return;
+  analyser.getFloatTimeDomainData(micBuf);
+  let sum = 0;
+  for (let i = 0; i < micBuf.length; i++) sum += micBuf[i]*micBuf[i];
+  const rms = Math.sqrt(sum / micBuf.length);
+  calibVals.push(rms);
+  if (calibVals.length > 90) calibVals.shift();
+  ambient = Math.max(0.003, calibVals.reduce((a,b)=>a+b,0) / calibVals.length * 1.4);
+  const target = Math.min(1, Math.max(0, (rms - ambient) / (0.14 - ambient*0.5 + 0.01)));
+  loud += (target - loud) * Math.min(1, dt * 14);
+}
+function readKeys(dt){
+  let kv = 0;
+  if (keys["f"]) kv = 1; else if (keys["s"]) kv = 0.28;
+  if (kv > 0 && kv >= loud) loud += (kv - loud) * Math.min(1, dt * 10);
+  else if (!analyser) loud += (kv - loud) * Math.min(1, dt * 8);
+}
+
+function showHud(v){
+  for (const k of ["oxygenWrap","neighborWrap","loudWrap","buttons"]) ui[k].style.display = v ? "" : "none";
+  ui.objective.style.display = v ? "" : "none";
+}
+function toastMsg(m, dur){
+  ui.toast.textContent = m; ui.toast.style.display = ""; toastT = dur || 2.4;
+}
+function setObjective(m){
+  ui.objective.textContent = m; ui.objective.style.display = m ? "" : "none";
+}
+function endScreen(title, cls, lines){
+  ui.endScreen.className = "overlay win " + (cls || "");
+  ui.endScreen.innerHTML =
+    "<h1>" + title + "</h1>" + lines.map(l => "<p>" + l + "</p>").join("") +
+    '<div class="btns"><button id="againBtn">Сыграть ещё [R]</button></div>';
+  ui.endScreen.classList.remove("hidden");
+  document.getElementById("againBtn").onclick = () => { ui.endScreen.classList.add("hidden"); state.val = "menu"; ui.menu.classList.remove("hidden"); };
+  showHud(false);
+}
+
+function startGame(mic){
+  useMic = mic;
+  oxygen = 100; water = 0; neighbor = 100; runTime = 0;
+  for (const p of pipes){ p.broken = true; p.progress = 0; }
+  dropData.length = 0;
+  player.position.set(0, 0, 4);
+  initFx();
+  showHud(true);
+  toastMsg("Найди лопнувшую трубу и заделай её голосом");
+  if (mic){
+    initMic().then(() => {
+      ui.menu.classList.add("hidden");
+      ui.calib.classList.remove("hidden");
+      state.val = "calib";
+      calibVals = [];
+    }).catch(() => {
+      toastMsg("Микрофон недоступен — режим клавиатуры");
+      useMic = false;
+      ui.menu.classList.add("hidden");
+      state.val = "play";
+    });
+  } else {
+    ui.menu.classList.add("hidden");
+    state.val = "play";
+  }
+}
+
+function loseGame(reason){
+  state.val = "lose";
+  beep(110, 0.7, "sawtooth");
+  endScreen(reason, "", [
+    "Продержался: " + runTime.toFixed(1) + " с · труб заделано: " + (PIPES_COUNT - pipes.filter(p=>p.broken).length) + "/" + PIPES_COUNT,
+    "Молчание важнее было. Или наоборот.",
+  ]);
+}
+function winGame(){
+  state.val = "win";
+  beep(660, 0.2); setTimeout(() => beep(880, 0.2), 150); setTimeout(() => beep(1320, 0.4), 300);
+  endScreen("ВСПЛЫТИЕ!", "win", [
+    "Трубы заделаны, воздух остался: " + Math.max(0, Math.round(oxygen)) + "%",
+    "Время: " + runTime.toFixed(1) + " с",
+  ]);
+}
+
+function activePipe(){
+  return pipes.find(p => p.broken);
+}
+function dist2D(ax, az, bx, bz){
+  return Math.hypot(ax - bx, az - bz);
+}
+
+function update(dt){
+  t += dt;
+  if (state.val === "menu" || state.val === "win" || state.val === "lose"){
+    lamp.intensity = 60;
+    return;
+  }
+  if (state.val === "calib"){
+    calibVals.push(0);
+    if (analyser) readMic(dt);
+    if (calibVals.length > 70){
+      ui.calib.classList.add("hidden");
+      state.val = "play";
+      toastMsg("Калибровка готова. Дыши тише, чем говоришь!");
+    }
+  }
+  if (state.val !== "play") return;
+
+  runTime += dt;
+  if (useMic || analyser) readMic(dt);
+  else loud += (0 - loud) * Math.min(1, dt * 8);
+  readKeys(dt);
+
+  let dx = 0, dz = 0;
+  if (keys["w"] || keys["ц"] || keys["arrowup"]) dz -= 1;
+  if (keys["s2"] || keys["ы"] || keys["arrowdown"]) dz += 1;
+  if (keys["a"] || keys["ф"] || keys["arrowleft"]) dx -= 1;
+  if (keys["d"] || keys["в"] || keys["arrowright"]) dx += 1;
+  const moving = dx !== 0 || dz !== 0;
+  if (moving){
+    const len = Math.hypot(dx, dz);
+    dx /= len; dz /= len;
+    const speed = 4.2;
+    player.position.x = Math.max(-ROOM.w/2 + 1, Math.min(ROOM.w/2 - 1, player.position.x + dx * speed * dt));
+    player.position.z = Math.max(-ROOM.d/2 + 1, Math.min(ROOM.d/2 - 1, player.position.z + dz * speed * dt));
+    player.rotation.y = Math.atan2(dx, dz);
+  }
+  const walkPhase = t * 10;
+  player.children.forEach((c, i) => {
+    if (i >= 9){
+      c.rotation.x = moving ? Math.sin(walkPhase + (i % 2 ? Math.PI : 0)) * 0.5 : 0;
+    }
+  });
+
+  const ap = activePipe();
+  let oxyExtra = 0;
+
+  if (ap){
+    const near = dist2D(player.position.x, player.position.z, ap.x, ap.z) < 3.2;
+    if (loud > 0.04){
+      oxyExtra += loud > 0.35 ? 7 * loud * loud : 1.4;
+      if (near){
+        const shouty = loud > 0.35;
+        const rate = shouty ? 16 * loud * loud : 2.4;
+        const before = Math.floor(ap.progress / 10);
+        ap.progress += rate * dt;
+        const after = Math.floor(ap.progress / 10);
+        if (after > before){
+          beep(500 + after*30, 0.08, "square");
+          for (let i = 0; i < 4; i++){
+            if (dropData.length < 80) dropData.push({ x: ap.x + 1.0, y: 1.6 + Math.random()*0.3, z: ap.z + (Math.random()-0.5)*0.6, vx: (Math.random()-0.5)*3, vy: 0, vz: (Math.random()-0.5)*3, s: Math.random() });
+          }
+        }
+        if (ap.progress >= 100){
+          ap.broken = false;
+          ap.glow.material.opacity = 0;
+          ap.leak.visible = false;
+          oxygen = Math.min(100, oxygen + 30);
+          water = Math.max(0, water - 25);
+          beep(880, 0.25); setTimeout(() => beep(1170, 0.3), 140);
+          const left = pipes.filter(p => p.broken).length;
+          toastMsg(left ? "Труба заделана: +30 воздуха. Следующая сломалась!" : "Все трубы заделаны! Держи воздух...", 2.6);
+          if (!left) setTimeout(() => { if (state.val === "play") winGame(); }, 2400);
+        }
+      } else {
+        setObjective("Говори не туда — подойди ближе к лопнувшей трубе!");
+      }
+    }
+  }
+
+  if (ap && !pipes.every(p => !p.broken)){
+    water += 2.4 * dt;
+    ap.glow.material.opacity = 0.5 + 0.5 * Math.sin(t * 6);
+    ap.leak.scale.setScalar(1 + Math.sin(t * 12) * 0.2);
+  }
+
+  oxygen -= (0.7 + oxyExtra) * dt;
+
+  if (loud > 0.45) neighbor -= (loud - 0.4) * 6 * dt;
+  else if (loud < 0.2 && (!ap || !activePipe())) neighbor += 1.2 * dt;
+  neighbor = Math.max(0, Math.min(100, neighbor));
+
+  if (neighbor < 45){
+    hbTimer -= dt;
+    if (hbTimer <= 0){ beep(70, 0.15, "sine"); hbTimer = 0.5 + neighbor/100; }
+  }
+
+  if (oxygen <= 0) loseGame("ВОЗДУХ КОНЧИЛСЯ");
+  else if (water >= 100) loseGame("ОТСЕК ЗАТОПИЛО");
+  else if (neighbor <= 0) loseGame("ОНО ТЕБЯ НАШЛО");
+}
+
+function updateParticles(dt){
+  for (let i = dropData.length - 1; i >= 0; i--){
+    const d = dropData[i];
+    d.vy += 9;
+    d.x += d.vx * dt; d.y -= d.vy * dt * 0.25; d.z += d.vz * dt;
+    if (d.y < 0.05) dropData.splice(i, 1);
+  }
+  const dropsM = new THREE.Matrix4();
+  for (let i = 0; i < 80; i++){
+    const d = dropData[i];
+    if (d) dropsM.makeScale(1,1,1).setPosition(d.x, d.y, d.z);
+    else dropsM.makeScale(0,0,0);
+    drops.setMatrixAt(i, dropsM);
+  }
+  drops.instanceMatrix.needsUpdate = true;
+
+  for (const b of bubbleData){
+    b.y += b.v * dt;
+    if (b.y > ROOM.h) { b.y = 0.05; b.x = (Math.random()-0.5)*ROOM.w; b.z = (Math.random()-0.5)*ROOM.d; }
+  }
+  for (let i = 0; i < bubbleData.length; i++){
+    const b = bubbleData[i];
+    bubbleM4.makeScale(b.s*0.4, b.s*0.4, b.s*0.4).setPosition(b.x, b.y, b.z);
+    bubbles.setMatrixAt(i, bubbleM4);
+  }
+  bubbles.instanceMatrix.needsUpdate = true;
+}
+
+function updateHud(){
+  ui.oxygenFill.style.width = Math.max(0, oxygen) + "%";
+  ui.oxygenFill.style.background = oxygen < 30 ? "#ff4757" : "#38e0ff";
+  ui.neighborFill.style.width = neighbor + "%";
+  ui.neighborFill.style.background = neighbor < 30 ? "#ff4757" : (neighbor < 60 ? "#ffbb33" : "#2ed573");
+  ui.loudFill.style.width = (loud * 100) + "%";
+  ui.vignette.classList.toggle("on", neighbor < 45);
+  redLight.intensity = neighbor < 45 ? (1 - neighbor/45) * 25 : 0;
+
+  const ap = activePipe();
+  let obj = "";
+  if (ap){
+    const near = dist2D(player.position.x, player.position.z, ap.x, ap.z) < 3.2;
+    if (!near) obj = "Иди к лопнувшей трубе: " + ap.label + " (прямо)";
+    else if (loud < 0.04) obj = "Говори в микрофон, чтобы заделать трубу!";
+    else obj = "Держи громкость! " + Math.floor(ap.progress) + "% заделано" + (neighbor < 30 ? " · ОНО СЛУШАЕТ..." : "");
+  }
+  setObjective(obj);
+
+  for (const p of pipes){
+    if (p.broken && activePipe() === p && state.val === "play"){
+      const v = new THREE.Vector3(1.4, 1.9, 0).applyEuler(p.g.rotation).add(p.g.position);
+      v.project(camera);
+      p.hud.style.display = "";
+      p.hud.style.left = ((v.x + 1)/2 * innerWidth) + "px";
+      p.hud.style.top = ((1 - (v.y + 1)/2) * innerHeight) + "px";
+      p.hud.querySelector("i").style.width = p.progress + "%";
+    } else {
+      p.hud.style.display = "none";
+    }
+  }
+
+  if (toastT > 0){
+    toastT -= 1/60;
+    ui.toast.style.opacity = Math.min(1, toastT);
+    if (toastT <= 0) ui.toast.style.display = "none";
+  }
+}
+
+let last = performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  update(dt);
+  updateParticles(dt);
+  updateHud();
+
+  const camTarget = player.position;
+  camera.position.lerp(new THREE.Vector3(camTarget.x, 5.5, camTarget.z + 7), 0.08);
+  camera.lookAt(camTarget.x, 1.4, camTarget.z);
+
+  neighborMesh.position.x = THREE.MathUtils.lerp(neighborMesh.position.x, 0, 0.01);
+  neighborMesh.position.z = -ROOM.d/2 - 4 - (neighbor/100) * 12;
+  neighborMesh.visible = neighbor < 70;
+
+  waterPlane.position.y = (water/100) * ROOM.h * 0.25;
+  waterMat.opacity = 0.5 * Math.min(1, water/15 + 0.4);
+
+  lamp.intensity = 60 + Math.sin(t * 1.7) * 8;
+  for (const p of pipes){
+    if (p.broken && activePipe() === p) p.valve.rotation.z += dt * (loud > 0.35 ? 3 : 0.4);
+  }
+
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+
+window.addEventListener("resize", () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+window.addEventListener("keydown", e => {
+  let k = e.key.toLowerCase();
+  if (k === "m"){ muted = !muted; if (fxGain) fxGain.gain.value = muted ? 0 : 0.12; ui.muteBtn.textContent = muted ? "🔇" : "🔊"; ui.muteBtn.classList.toggle("off", muted); }
+  if (k === "f" && !e.repeat){ if (document.fullscreenElement) document.exitFullscreen(); else wrap.requestFullscreen().catch(()=>{}); }
+  if (k === "r" && (state.val === "win" || state.val === "lose")){
+    ui.endScreen.classList.add("hidden");
+    state.val = "menu";
+    ui.menu.classList.remove("hidden");
+  }
+  if ((k === "1" || k === "2") && state.val === "menu") startGame(k === "1");
+  if (["w","a","s","d","ц","ф","ы","в"].includes(k)) keys[k === "ы" ? "s2" : k] = true;
+  if (["arrowup","arrowdown","arrowleft","arrowright"].includes(k)) keys[k] = true;
+  if (["f","s"].includes(k) && state.val === "menu") e.preventDefault();
+});
+window.addEventListener("keyup", e => {
+  const k = e.key.toLowerCase();
+  if (k === "ы") keys["s2"] = false; else keys[k] = false;
+});
+
+ui.btnMic.onclick = () => startGame(true);
+ui.btnKeys.onclick = () => startGame(false);
+ui.fsBtn.onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else wrap.requestFullscreen().catch(()=>{}); };
+ui.muteBtn.onclick = () => { muted = !muted; if (fxGain) fxGain.gain.value = muted ? 0 : 0.12; ui.muteBtn.textContent = muted ? "🔇" : "🔊"; ui.muteBtn.classList.toggle("off", muted); };
+</script>
+</body>
+</html>
