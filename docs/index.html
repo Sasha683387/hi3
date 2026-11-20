@@ -987,7 +987,8 @@ function saveRoom(code, role){
   } catch(e){}
 }
 function hostRoom(useMicWanted){
-  const code = genCode();
+  let code = genCode();
+  let attempts = 0;
   net.mode = "host";
   net.code = code;
   saveRoom(code, "host");
@@ -996,42 +997,68 @@ function hostRoom(useMicWanted){
   el("codeShow").textContent = code;
   el("lobbyMsg").textContent = "Скажи другу этот код, он вводит его у себя.";
   el("lobby").classList.remove("hidden");
-  const peer = new Peer("t40m-v3-" + code.toLowerCase(), peerOpts);
-  net.peer = peer;
-  peer.on("open", () => { if (net.mode === "host") el("lobbyMsg").textContent = "Комната открыта! Ждём друга..."; });
-  peer.on("error", err => {
-    el("lobbyMsg").textContent = "Ошибка сети: " + (err.type || "unknown") + ". Попробуй ещё раз.";
-  });
-  peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
-  peer.on("connection", c => {
-    if (net.conn && net.conn.open){ c.close(); return; }
-    net.conn = c;
-    c.on("open", () => {
+  const NET_TYPES = ["network", "socket-error", "socket-closed", "server-error"];
+  function startPeer(){
+    attempts++;
+    if (net.peer){ try { net.peer.destroy(); } catch(e){} }
+    el("codeShow").textContent = code;
+    const peer = new Peer("t40m-v3-" + code.toLowerCase(), peerOpts);
+    net.peer = peer;
+    peer.on("open", () => { if (net.mode === "host"){ el("lobbyMsg").textContent = "Комната открыта! Ждём друга..."; attempts = 0; } });
+    peer.on("error", err => {
+      const t = err.type || "unknown";
       if (net.mode !== "host") return;
-      el("lobby").classList.add("hidden");
-      net.active = true;
-      beginRun(useMicWanted, true);
-    });
-    c.on("data", d => {
-      if (!d) return;
-      if (d.t === "in" && S.val === "play"){
-        net.guestL = clamp(d.l || 0, 0, 1);
-        net.gRep = !!d.r;
-        net.buddyPos = { x: d.x || 0, z: d.z || 0, ry: d.ry || 0 };
-        net.gRun = !!d.rn;
+      if (t === "unavailable-id"){
+        if (attempts < 4){
+          el("lobbyMsg").textContent = "Код занят — берём другой...";
+          code = genCode(); net.code = code; saveRoom(code, "host");
+          setTimeout(startPeer, 1200);
+        } else {
+          el("lobbyMsg").textContent = "Не удалось занять код. Попробуй ещё раз.";
+        }
+        return;
       }
-    });
-    c.on("close", () => {
-      if (["play","paused","calib"].includes(S.val) && net.active){
-        toastMsg("Друг отключился.", 3);
+      if (NET_TYPES.includes(t) && attempts < 4){
+        el("lobbyMsg").textContent = "Сервер координации не отвечает — переподключаюсь (" + attempts + "/3)...";
+        setTimeout(startPeer, 1800);
+        return;
       }
-      net.active = false;
-      net.guestL = 0; net.gRep = false; net.gRun = false;
-      buddy.visible = false;
-      buddyTag.style.display = "none";
+      el("lobbyMsg").textContent = NET_TYPES.includes(t)
+        ? "Невозможно связаться с сервером координации peerjs.com. Проверь, не блокирует ли сеть VPN/антивирус/Wi-Fi, и попробуй ещё раз."
+        : "Ошибка сети: " + t + ". Попробуй ещё раз.";
     });
-  });
-  setupCallIncoming(peer);
+    peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
+    peer.on("connection", c => {
+      if (net.conn && net.conn.open){ c.close(); return; }
+      net.conn = c;
+      c.on("open", () => {
+        if (net.mode !== "host") return;
+        el("lobby").classList.add("hidden");
+        net.active = true;
+        beginRun(useMicWanted, true);
+      });
+      c.on("data", d => {
+        if (!d) return;
+        if (d.t === "in" && S.val === "play"){
+          net.guestL = clamp(d.l || 0, 0, 1);
+          net.gRep = !!d.r;
+          net.buddyPos = { x: d.x || 0, z: d.z || 0, ry: d.ry || 0 };
+          net.gRun = !!d.rn;
+        }
+      });
+      c.on("close", () => {
+        if (["play","paused","calib"].includes(S.val) && net.active){
+          toastMsg("Друг отключился.", 3);
+        }
+        net.active = false;
+        net.guestL = 0; net.gRep = false; net.gRun = false;
+        buddy.visible = false;
+        buddyTag.style.display = "none";
+      });
+    });
+    setupCallIncoming(peer);
+  }
+  startPeer();
 }
 function joinRoom(code, useMicWanted){
   net.mode = "guest";
@@ -1043,65 +1070,84 @@ function joinRoom(code, useMicWanted){
   el("lobbyMsg").textContent = "Подключаюсь к другу...";
   el("lobby").classList.remove("hidden");
   net.retryUsed = false;
-  const peer = new Peer(peerOpts);
-  net.peer = peer;
-  peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
-  peer.on("error", err => {
-    if (err.type === "peer-unavailable"){
-      if (!net.retryUsed && net.mode === "guest"){
-        net.retryUsed = true;
-        el("lobbyMsg").textContent = "Не нашёл сразу — пробую ещё раз...";
-        setTimeout(() => { if (net.mode === "guest") tryConnect(); }, 2500);
-      } else {
-        el("lobbyMsg").textContent = "Комната не найдена. Друг должен открыть игру и нажать «создать комнату».";
-      }
-      return;
-    }
-    el("lobbyMsg").textContent = "Ошибка сети: " + (err.type || "unknown") + ". Проверь интернет и попробуй ещё раз.";
-  });
-  peer.on("open", () => tryConnect());
-  function tryConnect(){
-    if (net.mode !== "guest" || (net.conn && net.conn.open)) return;
-    el("lobbyMsg").textContent = "Ищу друга: код " + code + " ...";
-    const conn = peer.connect("t40m-v3-" + code.toLowerCase(), { reliable: true });
-    net.conn = conn;
-    conn.on("open", () => {
+  let attempts = 0;
+  const NET_TYPES = ["network", "socket-error", "socket-closed", "server-error"];
+  function startPeer(){
+    attempts++;
+    if (net.peer){ try { net.peer.destroy(); } catch(e){} }
+    const peer = new Peer(peerOpts);
+    net.peer = peer;
+    peer.on("open", () => { attempts = 0; tryConnect(); });
+    peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
+    peer.on("error", err => {
       if (net.mode !== "guest") return;
-      el("lobby").classList.add("hidden");
-      net.active = true;
-      beginRun(useMicWanted, false);
-      setupCallOutgoing();
-    });
-    conn.on("data", d => {
-      if (!d) return;
-      if (d.t === "st" && ["play","calib"].includes(S.val)){
-        oxygen = d.o; water = d.w; noise = d.n; neighborD = d.d; runTime = d.tm || 0;
-        net.buddyPos = d.p || { x: 0, z: 4.5, ry: 0 };
-        if (d.f !== undefined && d.f !== fixedCount){ fixedCount = d.f; drawSysList(); }
-        systems.forEach((s, i) => {
-          const b = !!d.s[i][0], p = d.s[i][1];
-          if (!s.broken && b){ s.broken = b; s.shownProg = p; beep(90, 0.5, "sawtooth", 1.4); shake = 0.7; }
-          else { s.broken = b; s.progress = p; if (!repLocal) s.shownProg = p; }
-        });
-      } else if (d.t === "spawn" && S.val === "play"){
-        toastMsg(d.msg, 3.6);
-        drawSysList();
-      } else if (d.t === "toast" && S.val === "play"){
-        toastMsg(d.msg, d.dur || 2.8);
-      } else if (d.t === "end" && S.val !== "end"){
-        endScreen(d.title, d.good, d.lines || []);
-      } else if (d.t === "ping"){
-        netSend({ t: "pong" });
+      const t = err.type || "unknown";
+      if (t === "peer-unavailable"){
+        if (!net.retryUsed){
+          net.retryUsed = true;
+          el("lobbyMsg").textContent = "Не нашёл сразу — пробую ещё раз...";
+          setTimeout(() => { if (net.mode === "guest") tryConnect(); }, 2500);
+        } else if (attempts < 4){
+          el("lobbyMsg").textContent = "Ищу друга ещё раз (" + attempts + "/3)...";
+          setTimeout(startPeer, 2000);
+        } else {
+          el("lobbyMsg").textContent = "Комната не найдена. Друг должен открыть игру и нажать «создать комнату».";
+        }
+        return;
       }
-    });
-    conn.on("close", () => {
-      if (["play","paused","calib"].includes(S.val)){
-        endScreen("СВЯЗЬ ПОТЕРЯНА", false, ["Друг покинул комнату.", "Время: " + runTime.toFixed(1) + " с"]);
+      if (NET_TYPES.includes(t) && attempts < 4){
+        el("lobbyMsg").textContent = "Сервер координации не отвечает — переподключаюсь (" + attempts + "/3)...";
+        setTimeout(startPeer, 1800);
+        return;
       }
-      net.active = false;
+      el("lobbyMsg").textContent = NET_TYPES.includes(t)
+        ? "Невозможно связаться с сервером координации peerjs.com. Проверь, не блокирует ли сеть VPN/антивирус/Wi-Fi, и попробуй ещё раз."
+        : "Ошибка сети: " + t + ". Проверь интернет и попробуй ещё раз.";
     });
+    function tryConnect(){
+      if (net.mode !== "guest" || (net.conn && net.conn.open)) return;
+      el("lobbyMsg").textContent = "Ищу друга: код " + code + " ...";
+      const conn = peer.connect("t40m-v3-" + code.toLowerCase(), { reliable: true });
+      net.conn = conn;
+      conn.on("open", () => {
+        if (net.mode !== "guest") return;
+        el("lobby").classList.add("hidden");
+        net.active = true;
+        beginRun(useMicWanted, false);
+        setupCallOutgoing();
+      });
+      conn.on("data", d => {
+        if (!d) return;
+        if (d.t === "st" && ["play","calib"].includes(S.val)){
+          oxygen = d.o; water = d.w; noise = d.n; neighborD = d.d; runTime = d.tm || 0;
+          net.buddyPos = d.p || { x: 0, z: 4.5, ry: 0 };
+          if (d.f !== undefined && d.f !== fixedCount){ fixedCount = d.f; drawSysList(); }
+          systems.forEach((s, i) => {
+            const b = !!d.s[i][0], p = d.s[i][1];
+            if (!s.broken && b){ s.broken = b; s.shownProg = p; beep(90, 0.5, "sawtooth", 1.4); shake = 0.7; }
+            else { s.broken = b; s.progress = p; if (!repLocal) s.shownProg = p; }
+          });
+        } else if (d.t === "spawn" && S.val === "play"){
+          toastMsg(d.msg, 3.6);
+          drawSysList();
+        } else if (d.t === "toast" && S.val === "play"){
+          toastMsg(d.msg, d.dur || 2.8);
+        } else if (d.t === "end" && S.val !== "end"){
+          endScreen(d.title, d.good, d.lines || []);
+        } else if (d.t === "ping"){
+          netSend({ t: "pong" });
+        }
+      });
+      conn.on("close", () => {
+        if (["play","paused","calib"].includes(S.val)){
+          endScreen("СВЯЗЬ ПОТЕРЯНА", false, ["Друг покинул комнату.", "Время: " + runTime.toFixed(1) + " с"]);
+        }
+        net.active = false;
+      });
+    }
+    setupCallIncoming(peer);
   }
-  setupCallIncoming(peer);
+  startPeer();
 }
 
 let useMic = false, repLocal = false, pendingMode = "solo", enteredCode = "";
