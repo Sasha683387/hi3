@@ -153,6 +153,7 @@
         <button id="btnHost">📡 СОЗДАТЬ КОМНАТУ (2 игрока)</button>
         <button id="btnJoin">🔗 ПОДКЛЮЧИТЬСЯ К ДРУГУ</button>
         <button id="btnLobbyList">📋 ЛОББИ (мои комнаты)</button>
+        <button id="btnGlobalLobby">🌐 СЕРВЕРЫ (ждут партера)</button>
       </div>
       <div class="btns vertical hidden" id="voicePick">
         <button id="btnMic">🎙 Играть с микрофоном</button>
@@ -168,6 +169,11 @@
         <div class="keys">Мои комнаты на этом устройстве:</div>
         <div id="lobbyRows"></div>
         <button class="mini" id="lobbyListBack">← назад</button>
+      </div>
+      <div class="btns vertical hidden" id="serverPanel">
+        <div class="keys">🌐 Живые комнаты — игроки, которые сейчас ждут партера:</div>
+        <div id="serverRows"></div>
+        <div class="btns"><button class="mini" id="serverRefresh">🔄 обновить</button><button class="mini" id="serverMine">📋 мои</button><button class="mini" id="serverBack">← назад</button></div>
       </div>
       <div class="ctrlgrid">
         <b>WASD / стрелки</b><span>идти · <b style="color:#ffd93d">Shift</b> — бежать (шумно!)</span>
@@ -932,6 +938,7 @@ function netSend(o){
   try { if (net.conn && net.conn.open) net.conn.send(o); } catch(e){}
 }
 function netCleanup(){
+  stopBeacon();
   if (net.peer){ try { net.peer.destroy(); } catch(e){} }
   net.peer = null; net.conn = null; net.mode = null; net.active = false; net.guestL = 0; net.gRep = false; net.call = null; net.voiceOk = false; net.callTries = 0;
   buddy.visible = false;
@@ -986,6 +993,35 @@ function saveRoom(code, role){
     localStorage.setItem("t40m_rooms", JSON.stringify(list));
   } catch(e){}
 }
+let beaconPeer = null;
+function startBeacon(code){
+  stopBeacon();
+  const N = 14;
+  let i = 0;
+  const trySlot = () => {
+    if (net.mode !== "host" || beaconPeer || i >= N) return;
+    i++;
+    const p = new Peer(peerOpts);
+    p.on("error", err => {
+      if (err.type === "unavailable-id"){ try { p.destroy(); } catch(e){} trySlot(); }
+      else { try { p.destroy(); } catch(e){} }
+    });
+    p.on("open", () => {
+      if (beaconPeer || net.mode !== "host"){ try { p.destroy(); } catch(e){} return; }
+      beaconPeer = p;
+      p.on("connection", c => {
+        c.on("open", () => {
+          c.send({ t: "room", code: code, taken: net.active });
+          setTimeout(() => { try { c.close(); } catch(e){} }, 2000);
+        });
+      });
+    });
+  };
+  trySlot();
+}
+function stopBeacon(){ if (beaconPeer){ try { beaconPeer.destroy(); } catch(e){} beaconPeer = null; } }
+window.addEventListener("pagehide", stopBeacon);
+
 function hostRoom(useMicWanted){
   let code = genCode();
   let attempts = 0;
@@ -1004,7 +1040,7 @@ function hostRoom(useMicWanted){
     el("codeShow").textContent = code;
     const peer = new Peer("t40m-v3-" + code.toLowerCase(), peerOpts);
     net.peer = peer;
-    peer.on("open", () => { if (net.mode === "host"){ el("lobbyMsg").textContent = "Комната открыта! Ждём друга..."; attempts = 0; } });
+    peer.on("open", () => { if (net.mode === "host"){ el("lobbyMsg").textContent = "Комната открыта! Ждём друга..."; attempts = 0; startBeacon(code); } });
     peer.on("error", err => {
       const t = err.type || "unknown";
       if (net.mode !== "host") return;
@@ -1035,6 +1071,7 @@ function hostRoom(useMicWanted){
         if (net.mode !== "host") return;
         el("lobby").classList.add("hidden");
         net.active = true;
+        stopBeacon();
         beginRun(useMicWanted, true);
       });
       c.on("data", d => {
@@ -1903,6 +1940,7 @@ function showMenuModes(){
   el("voicePick").classList.add("hidden");
   el("joinBox").classList.add("hidden");
   el("lobbyListPanel").classList.add("hidden");
+  el("serverPanel").classList.add("hidden");
 }
 function showLobbyList(){
   try {
@@ -1930,10 +1968,65 @@ function showLobbyList(){
   el("menuModes").classList.add("hidden");
   el("joinBox").classList.add("hidden");
   el("voicePick").classList.add("hidden");
+  el("serverPanel").classList.add("hidden");
   el("lobbyListPanel").classList.remove("hidden");
 }
 el("btnLobbyList").onclick = showLobbyList;
 el("lobbyListBack").onclick = showMenuModes;
+let browseBusy = false;
+function browseLobby(){
+  if (browseBusy) return;
+  browseBusy = true;
+  el("serverRows").innerHTML = "<div class='keys' style='opacity:.7'>Смотрю, кто сейчас ждёт партера...</div>";
+  const found = {};
+  const probe = new Peer(peerOpts);
+  function render(){
+    try { probe.destroy(); } catch(e){}
+    browseBusy = false;
+    const list = Object.values(found);
+    if (!list.length){
+      el("serverRows").innerHTML = "<div class='keys' style='opacity:.6'>Сейчас никто не ждёт. Создай комнату — и она появится в этом списке у незнакомцев.</div>";
+      return;
+    }
+    list.sort((a, b) => (a.taken ? 1 : 0) - (b.taken ? 1 : 0));
+    el("serverRows").innerHTML = list.map(r =>
+      "<div class='lobbyRow' data-code='" + r.code + "'><b>" + r.code + "</b><span class='rrole'>" + (r.taken ? "занята" : "ждёт партера") + "</span></div>"
+    ).join("");
+    el("serverRows").querySelectorAll(".lobbyRow").forEach(row => {
+      row.onclick = () => {
+        el("serverPanel").classList.add("hidden");
+        el("menuModes").classList.add("hidden");
+        el("joinBox").classList.remove("hidden");
+        el("codeInput").value = row.dataset.code;
+        el("codeInput").focus();
+      };
+    });
+  }
+  const done = () => { if (browseBusy) render(); };
+  setTimeout(done, 3400);
+  setTimeout(done, 5600);
+  probe.on("error", () => {});
+  probe.on("open", () => {
+    for (let i = 0; i < 14; i++){
+      const c = probe.connect("t40m-v3-slot-" + i, { reliable: true });
+      c.on("data", d => { if (d && d.t === "room" && d.code) found[d.code] = d; });
+      c.on("error", () => {});
+      setTimeout(() => { try { c.close(); } catch(e){} }, 2500);
+    }
+  });
+  probe.on("disconnected", () => { try { probe.reconnect(); } catch(e){} });
+}
+el("btnGlobalLobby").onclick = () => {
+  el("menuModes").classList.add("hidden");
+  el("joinBox").classList.add("hidden");
+  el("voicePick").classList.add("hidden");
+  el("lobbyListPanel").classList.add("hidden");
+  el("serverPanel").classList.remove("hidden");
+  browseLobby();
+};
+el("serverRefresh").onclick = browseLobby;
+el("serverMine").onclick = showLobbyList;
+el("serverBack").onclick = showMenuModes;
 function showVoicePick(){
   el("menuModes").classList.add("hidden");
   el("voicePick").classList.remove("hidden");
