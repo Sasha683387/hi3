@@ -66,6 +66,10 @@
   .panel input:focus { border-color:#8ff0ff; box-shadow:0 0 22px rgba(42,212,255,.35), inset 0 2px 12px rgba(0,0,0,.5); }
   .sensrow { display:flex; align-items:center; gap:10px; justify-content:center; color:#8fb4ca; font-size:12px; margin-top:12px; }
   .sensrow input[type=range] { width:170px; accent-color:#2ad4ff; }
+  .lobbyRow { display:flex; align-items:center; gap:10px; justify-content:center; background:rgba(3,10,18,.7); border:1px solid rgba(106,196,246,.35); border-radius:12px; padding:9px 14px; margin:6px auto; max-width:300px; cursor:pointer; color:#8ff0ff; font-size:14px; letter-spacing:.05em; transition:.15s; }
+  .lobbyRow:hover { border-color:#8ff0ff; background:rgba(20,50,78,.75); transform:translateY(-1px); }
+  .lobbyRow .rrole { color:#7ea6bd; font-size:11px; } 
+  #lobbyRows { max-width:340px; margin:0 auto; }
   #codeShow { font-size:44px; letter-spacing:.35em; color:#ffd93d; text-shadow:0 0 24px rgba(255,217,61,.4); margin:12px 0; font-weight:700; }
   .hidden { display:none !important; }
   .ctrlgrid { display:grid; grid-template-columns:auto auto; gap:4px 14px; text-align:left; font-size:12.5px; color:#a9c9dc; line-height:1.7; margin:14px auto; width:fit-content; }
@@ -139,7 +143,7 @@
     <div class="panel" id="menuPanel">
       <h1>40 МЕТРОВ ТИШИНЫ</h1>
       <div class="sub">глубина 40 м · света мало · воздуха меньше</div>
-      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v7 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
+      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v8 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
       <p>Системы лодки сыпятся одна за другой. Чинить можно <b>голосом</b>: чем громче — тем быстрее.
          Но голос жжёт кислород, а шум копит <b>внимание Соседа</b>.<br>
          Трубы любят <b>крик</b>. Электрощитки — <b>только шёпот</b>: закричишь — искры и откат.</p>
@@ -148,6 +152,7 @@
         <button id="btnSolo">🚤 ОДИНОЧНАЯ ИГРА</button>
         <button id="btnHost">📡 СОЗДАТЬ КОМНАТУ (2 игрока)</button>
         <button id="btnJoin">🔗 ПОДКЛЮЧИТЬСЯ К ДРУГУ</button>
+        <button id="btnLobbyList">📋 ЛОББИ (мои комнаты)</button>
       </div>
       <div class="btns vertical hidden" id="voicePick">
         <button id="btnMic">🎙 Играть с микрофоном</button>
@@ -158,6 +163,11 @@
         <div class="keys" style="margin-bottom:10px">Введи код комнаты друга:</div>
         <input id="codeInput" maxlength="4" placeholder="XXXX" autocomplete="off">
         <div class="btns"><button id="btnJoinGo">Подключиться</button><button class="mini" id="joinBack">← назад</button></div>
+      </div>
+      <div class="btns vertical hidden" id="lobbyListPanel">
+        <div class="keys">Мои комнаты на этом устройстве:</div>
+        <div id="lobbyRows"></div>
+        <button class="mini" id="lobbyListBack">← назад</button>
       </div>
       <div class="ctrlgrid">
         <b>WASD / стрелки</b><span>идти · <b style="color:#ffd93d">Shift</b> — бежать (шумно!)</span>
@@ -297,7 +307,30 @@ for (let i = -3; i <= 3; i++) for (let j = -2; j <= 2; j++){
   scene.add(pl);
 }
 
-const wallMat = stdMat(0x1a2c40, 0.8, 0.2);
+function metalPanelTex(base, line, hi){
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 256;
+  const c = cv.getContext("2d");
+  c.fillStyle = base; c.fillRect(0, 0, 256, 256);
+  c.strokeStyle = line; c.lineWidth = 4;
+  c.strokeRect(4, 4, 248, 248);
+  c.beginPath(); c.moveTo(128, 6); c.lineTo(128, 250);
+  c.moveTo(6, 128); c.lineTo(250, 128); c.stroke();
+  c.fillStyle = line;
+  for (let i = 0; i < 4; i++){
+    c.beginPath(); c.arc(22, 40 + i*60, 3.5, 0, 7); c.fill();
+    c.beginPath(); c.arc(234, 70 + i*60, 3.5, 0, 7); c.fill();
+  }
+  c.globalAlpha = 0.14; c.fillStyle = hi;
+  for (let i = 0; i < 26; i++) c.fillRect(Math.random()*256, Math.random()*256, 5 + Math.random()*30, 2);
+  c.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(4, 2);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const wallMat = new THREE.MeshStandardMaterial({ map: metalPanelTex("#254156", "#132639", "#3f7099"), roughness: 0.75, metalness: 0.5 });
 function mkWall(w, x, z, ry){
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, ROOM.h, 0.34), wallMat);
   m.position.set(x, ROOM.h/2, z);
@@ -326,6 +359,84 @@ for (let i = 0; i < 3; i++){
   glass.position.set(-4.5 + i*4.5, 2.7, -ROOM.d/2 + 0.43);
   scene.add(glass);
 }
+
+const ribCols = [0x9a3b2e, 0x2e6b5e, 0x8a6d2b, 0x2e4f8a, 0x7a3b6e];
+for (let i = 0; i < 5; i++){
+  for (const sx of [-1, 1]){
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(ROOM.h*0.55, 0.16, 8, 24, Math.PI), stdMat(ribCols[i], 0.5, 0.6));
+    arc.position.set(sx * (ROOM.w/2 - 0.36), 0.25, -6 + i*3);
+    arc.rotation.y = Math.PI/2;
+    arc.rotation.z = Math.PI/2;
+    scene.add(arc);
+  }
+}
+
+const hatchGrp = new THREE.Group();
+const hatchDoor = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.2, 30), stdMat(0x2b4a63, 0.4, 0.8));
+hatchDoor.rotation.z = Math.PI/2;
+hatchGrp.add(hatchDoor);
+const hatchRing = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.09, 10, 30), stdMat(0xcc9f2f, 0.4, 0.7));
+hatchRing.rotation.y = Math.PI/2;
+hatchRing.position.x = 0.14;
+hatchGrp.add(hatchRing);
+const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 22), stdMat(0xcc2f2f, 0.4, 0.7));
+wheel.rotation.y = Math.PI/2;
+wheel.position.x = -0.2;
+hatchGrp.add(wheel);
+for (let i = 0; i < 3; i++){
+  const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.6, 0.05), stdMat(0xcc2f2f, 0.4, 0.7));
+  spoke.rotation.x = i * Math.PI/3;
+  spoke.position.x = -0.2;
+  hatchGrp.add(spoke);
+}
+hatchGrp.position.set(ROOM.w/2 - 0.12, 1.75, -4.2);
+scene.add(hatchGrp);
+
+const pipeMats = [stdMat(0xa83232, 0.5, 0.6), stdMat(0x2e8a7a, 0.5, 0.6)];
+for (let i = 0; i < 2; i++){
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, ROOM.d - 1, 12), pipeMats[i]);
+  pipe.rotation.x = Math.PI/2;
+  pipe.position.set(-5 + i*10, ROOM.h - 0.5, 0);
+  scene.add(pipe);
+  for (const pz of [-3.4, 3.4]){
+    const valve = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.05, 8, 20), stdMat(0xcc2f2f, 0.4, 0.7));
+    valve.position.set(-5 + i*10, ROOM.h - 0.85, pz);
+    scene.add(valve);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.34, 8), stdMat(0x86929c, 0.4, 0.8));
+    stem.position.set(-5 + i*10, ROOM.h - 0.85, pz);
+    scene.add(stem);
+  }
+}
+
+const hzCv = document.createElement("canvas");
+hzCv.width = 128; hzCv.height = 16;
+const hzc = hzCv.getContext("2d");
+for (let i = 0; i < 8; i++){
+  hzc.fillStyle = i % 2 ? "#111111" : "#f4c518";
+  hzc.fillRect(i*16, 0, 16, 16);
+}
+const hzTex = new THREE.CanvasTexture(hzCv);
+hzTex.wrapS = THREE.RepeatWrapping;
+hzTex.repeat.set(22, 1);
+hzTex.colorSpace = THREE.SRGBColorSpace;
+const hzStrip = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.02, ROOM.d - 1.2), new THREE.MeshStandardMaterial({ map: hzTex, roughness: 0.8 }));
+hzStrip.position.set(2.4, 0.06, 0);
+scene.add(hzStrip);
+const hzStrip2 = hzStrip.clone();
+hzStrip2.position.set(-2.4, 0.06, 0);
+scene.add(hzStrip2);
+
+function mkLampBox(x, z, col, inten){
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.34), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.6, roughness: 0.5 }));
+  box.position.set(x, 3.05, z);
+  box.rotation.y = Math.PI/2;
+  scene.add(box);
+  const lt = new THREE.PointLight(col, inten, 13, 1.4);
+  lt.position.set(x, 2.7, z);
+  scene.add(lt);
+}
+mkLampBox(-12.6, -6.4, 0x2fffc8, 46);
+mkLampBox(12.6, 6.4, 0xffa02f, 46);
 
 const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), stdMat(0x0b1926, 0.9, 0.2));
 ceiling.rotation.x = Math.PI/2;
@@ -855,21 +966,43 @@ function setupCallOutgoing(){
   });
   net.call = call;
 }
+const peerOpts = {
+  config: { iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" },
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+  ] }
+};
+function saveRoom(code, role){
+  try {
+    let list = [];
+    const raw = localStorage.getItem("t40m_rooms");
+    if (raw) list = JSON.parse(raw) || [];
+    list = list.filter(r => r && r.code !== code);
+    list.unshift({ code: code, role: role, ts: Date.now() });
+    if (list.length > 8) list.length = 8;
+    localStorage.setItem("t40m_rooms", JSON.stringify(list));
+  } catch(e){}
+}
 function hostRoom(useMicWanted){
   const code = genCode();
   net.mode = "host";
   net.code = code;
+  saveRoom(code, "host");
   ui.menu.classList.add("hidden");
   el("lobbyTitle").textContent = "ЖДЁМ ДРУГА";
   el("codeShow").textContent = code;
   el("lobbyMsg").textContent = "Скажи другу этот код, он вводит его у себя.";
   el("lobby").classList.remove("hidden");
-  const peer = new Peer("t40m-v3-" + code.toLowerCase());
+  const peer = new Peer("t40m-v3-" + code.toLowerCase(), peerOpts);
   net.peer = peer;
   peer.on("open", () => { if (net.mode === "host") el("lobbyMsg").textContent = "Комната открыта! Ждём друга..."; });
   peer.on("error", err => {
     el("lobbyMsg").textContent = "Ошибка сети: " + (err.type || "unknown") + ". Попробуй ещё раз.";
   });
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
   peer.on("connection", c => {
     if (net.conn && net.conn.open){ c.close(); return; }
     net.conn = c;
@@ -903,17 +1036,33 @@ function hostRoom(useMicWanted){
 function joinRoom(code, useMicWanted){
   net.mode = "guest";
   net.code = code;
+  saveRoom(code, "join");
   ui.menu.classList.add("hidden");
   el("lobbyTitle").textContent = "ПОДКЛЮЧЕНИЕ";
   el("codeShow").textContent = code;
   el("lobbyMsg").textContent = "Подключаюсь к другу...";
   el("lobby").classList.remove("hidden");
-  const peer = new Peer();
+  net.retryUsed = false;
+  const peer = new Peer(peerOpts);
   net.peer = peer;
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch(e){} });
   peer.on("error", err => {
-    el("lobbyMsg").textContent = err.type === "peer-unavailable" ? "Комната не найдена. Проверь код." : "Ошибка сети: " + (err.type || "unknown") + ".";
+    if (err.type === "peer-unavailable"){
+      if (!net.retryUsed && net.mode === "guest"){
+        net.retryUsed = true;
+        el("lobbyMsg").textContent = "Не нашёл сразу — пробую ещё раз...";
+        setTimeout(() => { if (net.mode === "guest") tryConnect(); }, 2500);
+      } else {
+        el("lobbyMsg").textContent = "Комната не найдена. Друг должен открыть игру и нажать «создать комнату».";
+      }
+      return;
+    }
+    el("lobbyMsg").textContent = "Ошибка сети: " + (err.type || "unknown") + ". Проверь интернет и попробуй ещё раз.";
   });
-  peer.on("open", () => {
+  peer.on("open", () => tryConnect());
+  function tryConnect(){
+    if (net.mode !== "guest" || (net.conn && net.conn.open)) return;
+    el("lobbyMsg").textContent = "Ищу друга: код " + code + " ...";
     const conn = peer.connect("t40m-v3-" + code.toLowerCase(), { reliable: true });
     net.conn = conn;
     conn.on("open", () => {
@@ -951,7 +1100,7 @@ function joinRoom(code, useMicWanted){
       }
       net.active = false;
     });
-  });
+  }
   setupCallIncoming(peer);
 }
 
@@ -1254,9 +1403,9 @@ function update(dt){
     } else if (hissGain.gain.value > 0){
       hissGain.gain.value *= 0.95;
     }
-    if (active) water += 2.2 * dt;
-    if (net.active && net.guestL > 0.04) oxygen -= (net.guestL > 0.35 ? 7.5 * net.guestL * net.guestL : 1.5) * dt;
-    oxygen -= (0.65 + oxyExtra) * dt;
+    if (active) water += 1.6 * dt;
+    if (net.active && net.guestL > 0.04) oxygen -= (net.guestL > 0.35 ? 6 * net.guestL * net.guestL : 1.2) * dt;
+    oxygen -= (0.5 + oxyExtra) * dt;
 
     let totalLoud = loud;
     if (net.active && net.guestL > totalLoud) totalLoud = net.guestL;
@@ -1348,14 +1497,15 @@ function update(dt){
 
 function drawSysList(){
   const active = nextSystem();
-  ui.sysList.innerHTML = "<div style='letter-spacing:.2em;font-size:10px;margin-bottom:6px'>СИСТЕМЫ</div>" +
+  ui.sysList.innerHTML = "<div style='letter-spacing:.2em;font-size:10px;margin-bottom:6px;color:#ffd93d'>ПОЛОМКИ</div>" +
     systems.map(s => {
       const pv = net.mode === "guest" ? s.shownProg : s.progress;
-      const cls = !s.broken ? "ok" : (pv > 0 ? "" : "bad");
-      const icon = !s.broken ? "✔" : (s.kind === "fuse" ? "⚡" : "💧");
-      const st = !s.broken ? "готово" : (pv > 0 ? Math.floor(pv) + "%" : (s.kind === "fuse" ? "надо шептать" : "надо кричать"));
+      if (!s.broken) return "<span style='opacity:.32'>· " + s.label + " — цело</span>";
+      const cls = pv > 0 ? "" : "bad";
+      const icon = s.kind === "fuse" ? "⚡" : "💧";
+      const st = pv > 0 ? Math.floor(pv) + "%" : (s.kind === "fuse" ? "надо шептать" : "надо кричать");
       return "<span class='" + cls + "'>" + icon + " " + s.label + " — " + (s === active ? "<b>" + st + "</b>" : st) + "</span>";
-    }).join("<br>");
+    }).reverse().join("<br>");
 }
 
 function mkPoster(x, y, z, ry, w, h, paint){
@@ -1363,7 +1513,7 @@ function mkPoster(x, y, z, ry, w, h, paint){
   const c = cv.getContext("2d");
   paint(c, cv);
   const t = new THREE.CanvasTexture(cv);
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, metalness: 0.05 }));
   m.position.set(x, y, z); m.rotation.y = ry;
   scene.add(m);
 }
@@ -1706,7 +1856,38 @@ function showMenuModes(){
   el("menuModes").classList.remove("hidden");
   el("voicePick").classList.add("hidden");
   el("joinBox").classList.add("hidden");
+  el("lobbyListPanel").classList.add("hidden");
 }
+function showLobbyList(){
+  try {
+    const raw = localStorage.getItem("t40m_rooms");
+    const list = raw ? (JSON.parse(raw) || []).filter(r => r && r.code) : [];
+    const box = el("lobbyRows");
+    if (!list.length){
+      box.innerHTML = "<div class='keys' style='opacity:.6'>Пока пусто. Создай комнату или подключись — код запомнится здесь.</div>";
+    } else {
+      box.innerHTML = list.map(r => {
+        const role = r.role === "host" ? "📡 своя" : (r.role === "join" ? "🔗 гость" : "");
+        return "<div class='lobbyRow' data-code='" + r.code + "'><b>" + r.code + "</b><span class='rrole'>" + role + "</span></div>";
+      }).join("");
+      box.querySelectorAll(".lobbyRow").forEach(row => {
+        row.onclick = () => {
+          el("lobbyListPanel").classList.add("hidden");
+          el("menuModes").classList.add("hidden");
+          el("joinBox").classList.remove("hidden");
+          el("codeInput").value = row.dataset.code;
+          el("codeInput").focus();
+        };
+      });
+    }
+  } catch(e){ el("lobbyRows").innerHTML = "<div class='keys' style='opacity:.6'>Не удалось прочитать список.</div>"; }
+  el("menuModes").classList.add("hidden");
+  el("joinBox").classList.add("hidden");
+  el("voicePick").classList.add("hidden");
+  el("lobbyListPanel").classList.remove("hidden");
+}
+el("btnLobbyList").onclick = showLobbyList;
+el("lobbyListBack").onclick = showMenuModes;
 function showVoicePick(){
   el("menuModes").classList.add("hidden");
   el("voicePick").classList.remove("hidden");
