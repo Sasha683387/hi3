@@ -143,7 +143,7 @@
     <div class="panel" id="menuPanel">
       <h1>40 МЕТРОВ ТИШИНЫ</h1>
       <div class="sub">глубина 40 м · света мало · воздуха меньше</div>
-      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v8 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
+      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v9 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
       <p>Системы лодки сыпятся одна за другой. Чинить можно <b>голосом</b>: чем громче — тем быстрее.
          Но голос жжёт кислород, а шум копит <b>внимание Соседа</b>.<br>
          Трубы любят <b>крик</b>. Электрощитки — <b>только шёпот</b>: закричишь — искры и откат.</p>
@@ -337,44 +337,45 @@ function metalPanelTex(base, line, hi){
   return t;
 }
 const wallMat = new THREE.MeshStandardMaterial({ map: metalPanelTex("#254156", "#132639", "#3f7099"), roughness: 0.75, metalness: 0.5 });
-function mkWall(w, x, z, ry){
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, ROOM.h, 0.34), wallMat);
-  m.position.set(x, ROOM.h/2, z);
-  m.rotation.y = ry;
+const HULL = { r: 6.0, y: 1.9, len: 26.6 };
+const hullTex = metalPanelTex("#2a4a66", "#16293d", "#4a7ea8");
+hullTex.repeat.set(7, 2);
+const hullMat = new THREE.MeshStandardMaterial({ color: 0xbfd6e4, map: hullTex, roughness: 0.7, metalness: 0.55, side: THREE.DoubleSide });
+function hullPiece(a0, alen, x0, x1){
+  const g = new THREE.CylinderGeometry(HULL.r, HULL.r, x1 - x0, 28, 1, true, a0, alen);
+  g.rotateZ(Math.PI/2);
+  const m = new THREE.Mesh(g, hullMat);
+  m.position.set((x0 + x1)/2, HULL.y, 0);
   scene.add(m);
 }
-mkWall(ROOM.w, 0, -ROOM.d/2, 0);
-mkWall(ROOM.w, 0, ROOM.d/2, 0);
-mkWall(ROOM.d, -ROOM.w/2, 0, Math.PI/2);
-mkWall(ROOM.d, ROOM.w/2, 0, Math.PI/2);
-
-const ribMat = stdMat(0x0d1e2e, 0.6, 0.6);
-for (let i = -4; i <= 4; i++){
-  const rib = new THREE.Mesh(new THREE.TorusGeometry(ROOM.h*0.72, 0.14, 8, 24, Math.PI), ribMat);
-  rib.position.set(i*3.4, 0.2, -ROOM.d/2 + 0.42);
-  rib.rotation.z = Math.PI/2;
-  rib.scale.set(1, 1, 0.16);
-  scene.add(rib);
+hullPiece(-Math.PI/2, Math.PI, -HULL.len/2, HULL.len/2);
+for (const [x0, x1] of [[-HULL.len/2, -5.5], [-3.6, -0.9], [0.9, 3.6], [5.5, HULL.len/2]]){
+  hullPiece(Math.PI/2, Math.PI, x0, x1);
 }
-
-for (let i = 0; i < 3; i++){
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.09, 10, 28), stdMat(0x2b4a63, 0.4, 0.7));
-  ring.position.set(-4.5 + i*4.5, 2.7, -ROOM.d/2 + 0.42);
+for (const wx of [-4.5, 0, 4.5]){
+  const wz = -Math.sqrt(HULL.r*HULL.r - (2.7 - HULL.y)*(2.7 - HULL.y));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.09, 10, 28), stdMat(0xcc9f2f, 0.4, 0.7));
+  ring.position.set(wx, 2.7, wz + 0.08);
+  ring.rotation.x = 0.13;
   scene.add(ring);
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.74, 28), new THREE.MeshBasicMaterial({ color: 0x0d3350, transparent: true, opacity: 0.42 }));
-  glass.position.set(-4.5 + i*4.5, 2.7, -ROOM.d/2 + 0.43);
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.72, 28), new THREE.MeshBasicMaterial({ color: 0x0d3350, transparent: true, opacity: 0.42 }));
+  glass.position.set(wx, 2.7, wz + 0.03);
+  glass.rotation.x = 0.13;
   scene.add(glass);
 }
+for (const sx of [-1, 1]){
+  const bh = new THREE.Mesh(new THREE.CircleGeometry(HULL.r - 0.1, 40), new THREE.MeshStandardMaterial({ map: metalPanelTex("#314962", "#1a2f44", "#5d90b8"), roughness: 0.7, metalness: 0.5, side: THREE.DoubleSide }));
+  bh.position.set(sx * 12.95, HULL.y, 0);
+  bh.rotation.y = sx > 0 ? -Math.PI/2 : Math.PI/2;
+  scene.add(bh);
+}
 
-const ribCols = [0x9a3b2e, 0x2e6b5e, 0x8a6d2b, 0x2e4f8a, 0x7a3b6e];
-for (let i = 0; i < 5; i++){
-  for (const sx of [-1, 1]){
-    const arc = new THREE.Mesh(new THREE.TorusGeometry(ROOM.h*0.55, 0.16, 8, 24, Math.PI), stdMat(ribCols[i], 0.5, 0.6));
-    arc.position.set(sx * (ROOM.w/2 - 0.36), 0.25, -6 + i*3);
-    arc.rotation.y = Math.PI/2;
-    arc.rotation.z = Math.PI/2;
-    scene.add(arc);
-  }
+const ribCols = [0x9a3b2e, 0x2e6b5e, 0x8a6d2b, 0x2e4f8a];
+for (let i = -3; i <= 3; i++){
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(HULL.r - 0.02, 0.15, 10, 42), stdMat(ribCols[(i + 3) % 4], 0.55, 0.6));
+  ring.position.set(i*3.4, HULL.y, 0);
+  ring.rotation.y = Math.PI/2;
+  scene.add(ring);
 }
 
 const hatchGrp = new THREE.Group();
@@ -441,8 +442,8 @@ function mkLampBox(x, z, col, inten){
   lt.position.set(x, 2.7, z);
   scene.add(lt);
 }
-mkLampBox(-12.6, -6.4, 0x2fffc8, 46);
-mkLampBox(12.6, 6.4, 0xffa02f, 46);
+mkLampBox(-11.4, -4.8, 0x2fffc8, 46);
+mkLampBox(11.4, 4.8, 0xffa02f, 46);
 
 const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), stdMat(0x0b1926, 0.9, 0.2));
 ceiling.rotation.x = Math.PI/2;
@@ -508,17 +509,17 @@ modelLoader.load("models/helmet.glb", gltf => {
 }, undefined, () => {});
 
 const decorSets = [
-  ["models/decor/decor_computer.glb", 1.15, -10.8, 0, -6.3, Math.PI/2],
-  ["models/decor/decor_computer_small.glb", 0.9, -9.4, 0, -6.4, Math.PI/2 + 0.4],
-  ["models/decor/decor_vessel_tall.glb", 1.9, -12.0, 0, 6.0, 0],
-  ["models/decor/decor_vessel_short.glb", 1.1, -10.7, 0, 6.2, 0.6],
-  ["models/decor/decor_shelf_tall.glb", 2.1, 12.2, 0, -5.8, -Math.PI/2],
-  ["models/decor/decor_crate_long.glb", 1.6, 11.6, 0, 6.0, 0.15],
+  ["models/decor/decor_computer.glb", 1.15, -10.8, 0, -5.0, Math.PI/2],
+  ["models/decor/decor_computer_small.glb", 0.9, -9.4, 0, -5.1, Math.PI/2 + 0.4],
+  ["models/decor/decor_vessel_tall.glb", 1.9, -12.0, 0, 4.9, 0],
+  ["models/decor/decor_vessel_short.glb", 1.1, -10.7, 0, 4.9, 0.6],
+  ["models/decor/decor_shelf_tall.glb", 2.1, 12.2, 0, -4.6, -Math.PI/2],
+  ["models/decor/decor_crate_long.glb", 1.6, 11.6, 0, 4.9, 0.15],
   ["models/decor/decor_pod.glb", 1.8, 12.2, 0, -2.5, -Math.PI/2],
-  ["models/decor/decor_bookshelf.glb", 1.5, -2.2, 0, -6.3, Math.PI],
+  ["models/decor/decor_bookshelf.glb", 1.5, -2.2, 0, -5.0, Math.PI],
   ["models/decor/decor_chair.glb", 0.95, -3.4, 0, -5.2, Math.PI*0.85],
   ["models/decor/decor_plant.glb", 0.5, 7.2, 2.2, 4.1, -0.4],
-  ["models/decor/decor_fridge.glb", 1.8, 9.6, 0, 5.6, -Math.PI/2 - 0.3],
+  ["models/decor/decor_fridge.glb", 1.8, 9.6, 0, 5.0, -Math.PI/2 - 0.3],
   ["models/decor/decor_stool.glb", 0.55, 12.0, 0, 2.2, -Math.PI/2]
 ];
 function addDecor(path, maxDim, x, y, z, ry){
@@ -756,10 +757,10 @@ function mkFuseSys(x, z, ry, label){
   systems.push({ kind: "fuse", g, switches, warn, smoke, contact, marker: addMarker(), label, broken: false, shownProg: 0, x, z });
 }
 
-mkPipeSys(-8.5, -ROOM.d/2 + 0.42, 0, "труба северо-запад");
-mkPipeSys(9.5, -ROOM.d/2 + 0.42, 0, "труба северо-восток");
-mkPipeSys(ROOM.w/2 - 0.42, -2, -Math.PI/2, "труба восток");
-mkFuseSys(0, ROOM.d/2 - 0.42, Math.PI, "щиток юг");
+mkPipeSys(-8.5, -5.2, 0, "труба северо-запад");
+mkPipeSys(9.5, -5.2, 0, "труба северо-восток");
+mkPipeSys(ROOM.w/2 - 0.5, -2, -Math.PI/2, "труба восток");
+mkFuseSys(0, 5.2, Math.PI, "щиток юг");
 mkFuseSys(-ROOM.w/2 + 0.42, 3.5, Math.PI/2, "щиток запад");
 
 const waterMat2 = new THREE.MeshPhysicalMaterial({ color: 0x12508c, transparent: true, opacity: 0, roughness: 0.12, metalness: 0.05, side: THREE.DoubleSide });
@@ -1449,7 +1450,7 @@ function update(dt){
     const wx = dx * cosY + dz * sinY;
     const wz = -dx * sinY + dz * cosY;
     playerPos.x = clamp(playerPos.x + wx * speed * dt, -ROOM.w/2 + 1.2, ROOM.w/2 - 1.2);
-    playerPos.z = clamp(playerPos.z + wz * speed * dt, -ROOM.d/2 + 1.2, ROOM.d/2 - 1.2);
+    playerPos.z = clamp(playerPos.z + wz * speed * dt, -4.85, 4.85);
     stepDist += speed * dt;
     if (stepDist > (run ? 2.4 : 2)){ stepDist = 0; footstep(); }
   }
@@ -1633,9 +1634,9 @@ function mkScreen(x){
   cv.width = 256; cv.height = 144;
   const tex = new THREE.CanvasTexture(cv);
   const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.9), new THREE.MeshBasicMaterial({ map: tex }));
-  scr.position.set(x, 1.9, -ROOM.d/2 + 0.42);
+  scr.position.set(x, 1.9, -5.85);
   const frame = new THREE.Mesh(new THREE.BoxGeometry(1.64, 1.04, 0.1), stdMat(0x0a1622, 0.5, 0.6));
-  frame.position.set(x, 1.9, -ROOM.d/2 + 0.39);
+  frame.position.set(x, 1.9, -5.9);
   scene.add(frame);
   scene.add(scr);
   screens.push({ ctx: cv.getContext("2d"), tex });
