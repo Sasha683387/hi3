@@ -122,6 +122,7 @@
   <div id="sysList" style="display:none"></div>
   <div id="buttons" style="display:none">
     <button id="helpBtn" title="H">?</button>
+    <button id="musicBtn" title="B">🎵</button>
     <button id="muteBtn" title="M">&#128266;</button>
     <button id="fsBtn" title="G">&#9974;</button>
     <button id="pauseBtn" title="P">&#10073;&#10073;</button>
@@ -138,7 +139,7 @@
     <div class="panel" id="menuPanel">
       <h1>40 МЕТРОВ ТИШИНЫ</h1>
       <div class="sub">глубина 40 м · света мало · воздуха меньше</div>
-      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v6 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
+      <p style="margin-bottom:10px;font-size:11px;color:#5f8aa3">версия v7 · если что-то глючит — обнови страницу жёстко (Ctrl+Shift+R)</p>
       <p>Системы лодки сыпятся одна за другой. Чинить можно <b>голосом</b>: чем громче — тем быстрее.
          Но голос жжёт кислород, а шум копит <b>внимание Соседа</b>.<br>
          Трубы любят <b>крик</b>. Электрощитки — <b>только шёпот</b>: закричишь — искры и откат.</p>
@@ -162,7 +163,7 @@
         <b>WASD / стрелки</b><span>идти · <b style="color:#ffd93d">Shift</b> — бежать (шумно!)</span>
         <b>мышь</b><span>смотреть (на телефоне — левый джойстик, свайп справа)</span>
         <b>F</b><span>громкий крик без микрофона · <b>V</b> — шёпот</span>
-        <b>M</b><span>звук · <b>H</b> — управление · <b>G</b> — полный экран · <b>Esc/P</b> — пауза</span>
+        <b>M</b><span>звук · <b>B</b> — лоу-фай · <b>H</b> — управление · <b>G</b> — на весь экран · <b>Esc/P</b> — пауза</span>
       </div>
     </div>
   </div>
@@ -239,7 +240,7 @@ const ui = {
   help: el("help"), end: el("end"), endPanel: el("endPanel"), netPill: el("netPill"),
   topLeft: el("topLeft"), topRight: el("topRight"), topCenter: el("topCenter"),
   loudBox: el("loudBox"), buttons: el("buttons"), touchUI: el("touchUI"),
-  muteBtn: el("muteBtn"), fsBtn: el("fsBtn"), helpBtn: el("helpBtn"), pauseBtn: el("pauseBtn"), lobby: el("lobby"),
+  muteBtn: el("muteBtn"), fsBtn: el("fsBtn"), helpBtn: el("helpBtn"), pauseBtn: el("pauseBtn"), lobby: el("lobby"), musicBtn: el("musicBtn"),
 };
 
 const S = { val: "intro" };
@@ -269,7 +270,8 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), is
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
-scene.add(new THREE.AmbientLight(0x28425c, 1.1));
+scene.add(new THREE.AmbientLight(0x2c4a68, 1.4));
+scene.add(new THREE.HemisphereLight(0x8fc4ff, 0x2a4433, 0.6));
 const lamp = new THREE.PointLight(0xbfe4ff, 90, 26, 1.6);
 lamp.position.set(0, ROOM.h - 0.7, 0);
 scene.add(lamp);
@@ -358,6 +360,11 @@ const nautilusGroup = new THREE.Group();
 nautilusGroup.position.set(0, 2.2, -ROOM.d/2 - 7);
 scene.add(nautilusGroup);
 function fitModel(root, maxDim, place){
+  root.traverse(o => {
+    if (o.isMesh && o.material && o.material.color){
+      o.material.color = o.material.color.clone().multiplyScalar(o.material.map ? 1.15 : 1.5);
+    }
+  });
   const bb = new THREE.Box3().setFromObject(root);
   const size = bb.getSize(new THREE.Vector3());
   root.scale.setScalar(maxDim / Math.max(size.x, size.y, size.z, 0.0001));
@@ -375,10 +382,10 @@ modelLoader.load("models/nautilus.glb", gltf => {
 modelLoader.load("models/helmet.glb", gltf => {
   const h = gltf.scene;
   h.rotation.y = Math.PI + 0.7;
-  fitModel(h, 0.58, () => {
-    h.position.x += -6.8;
-    h.position.y += 1.2;
-    h.position.z += 3.8;
+  fitModel(h, 0.85, () => {
+    h.position.x += 7.8;
+    h.position.y += 1.1;
+    h.position.z += 4.6;
   });
   scene.add(h);
 }, undefined, () => {});
@@ -394,6 +401,8 @@ const decorSets = [
   ["models/decor/decor_bookshelf.glb", 1.5, -2.2, 0, -6.3, Math.PI],
   ["models/decor/decor_chair.glb", 0.95, -3.4, 0, -5.2, Math.PI*0.85],
   ["models/decor/decor_plant.glb", 0.5, 7.2, 2.2, 4.1, -0.4],
+  ["models/decor/decor_fridge.glb", 1.8, 9.6, 0, 5.6, -Math.PI/2 - 0.3],
+  ["models/decor/decor_stool.glb", 0.55, 12.0, 0, 2.2, -Math.PI/2]
 ];
 function addDecor(path, maxDim, x, y, z, ry){
   modelLoader.load(path, gltf => {
@@ -407,10 +416,111 @@ function addDecor(path, maxDim, x, y, z, ry){
 }
 for (const d of decorSets) addDecor(...d);
 
+const boombox = new THREE.Group();
+const bbBody = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.34, 0.22), stdMat(0xff7f2a, 0.5, 0.3, 0xff7f2a, 0.08));
+boombox.add(bbBody);
+for (const sx of [-0.16, 0.16]){
+  const spd = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.05, 18), stdMat(0x101418, 0.8, 0.1));
+  spd.rotation.x = Math.PI/2;
+  spd.position.set(sx, -0.02, 0.12);
+  boombox.add(spd);
+  const sgr = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 8, 20), stdMat(0xcc5a00, 0.6, 0.4));
+  sgr.position.set(sx, -0.02, 0.125);
+  boombox.add(sgr);
+}
+const tapeSlot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.02), new THREE.MeshBasicMaterial({ color: 0xffd93d }));
+tapeSlot.position.set(0, 0.09, 0.12);
+boombox.add(tapeSlot);
+const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.34, 6), stdMat(0xcccccc, 0.4, 0.9));
+antenna.position.set(0.26, 0.27, -0.04);
+antenna.rotation.z = -0.5;
+boombox.add(antenna);
+boombox.position.set(-12.0, 0.17, 2.6);
+boombox.rotation.y = Math.PI/2 - 0.3;
+scene.add(boombox);
+
+let lofiOn = false, lofiTmr = null, crackleBuf = null, lofiCrackle = null;
+const lofiChords = [
+  [174.61, 220.0, 261.63, 329.63],
+  [146.83, 220.0, 349.23, 440.0],
+  [196.0, 246.94, 293.66, 349.23],
+  [130.81, 196.0, 261.63, 329.63]
+];
+function lofiTone(f, t0, dur, vol, type){
+  const o = fx.createOscillator(); o.type = type || "triangle";
+  o.frequency.value = f; o.detune.value = Math.random()*7 - 3;
+  const g = fx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + dur*0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  const lp = fx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1400;
+  o.connect(g); g.connect(lp); lp.connect(master);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function lofiNoiseHit(t0, freq, dur, vol, q){
+  const b = fx.createBufferSource(); b.buffer = crackleBuf; b.loop = true;
+  const f = fx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q || 1;
+  const g = fx.createGain();
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  b.connect(f); f.connect(g); g.connect(master); b.start(t0); b.stop(t0 + dur + 0.05);
+}
+function lofiBar(i){
+  if (!lofiOn) return;
+  const t0 = fx.currentTime + 0.05;
+  const chord = lofiChords[i % 4];
+  for (const f of chord) lofiTone(f * 2, t0, 3.1, 0.035);
+  lofiTone(chord[0]/2, t0, 1.5, 0.05, "sine");
+  lofiTone(chord[0]/2, t0 + 1.7, 1.5, 0.045, "sine");
+  lofiTone(chord[1]/2, t0 + 2.9, 0.6, 0.035, "sine");
+  lofiNoiseHit(t0, 52, 0.3, 0.34, 0.7);
+  lofiNoiseHit(t0 + 1.7, 52, 0.3, 0.34, 0.7);
+  lofiNoiseHit(t0 + 0.92, 1800, 0.16, 0.14);
+  lofiNoiseHit(t0 + 2.62, 1800, 0.16, 0.14);
+  for (let bts = 0; bts < 8; bts++) lofiNoiseHit(t0 + bts*0.4375 + 0.21, 7000, 0.05, bts % 2 ? 0.02 : 0.045, 2);
+  lofiTmr = setTimeout(() => lofiBar(i + 1), 3520);
+}
+function setLofi(on){
+  if (!fx){ return; }
+  if (on && !lofiOn){
+    if (!crackleBuf){
+      crackleBuf = fx.createBuffer(1, fx.sampleRate * 2, fx.sampleRate);
+      const d0 = crackleBuf.getChannelData(0);
+      for (let i = 0; i < d0.length; i++) d0[i] = Math.random()*2 - 1;
+    }
+    const cr = fx.createBufferSource(); cr.buffer = crackleBuf; cr.loop = true;
+    const cf = fx.createBiquadFilter(); cf.type = "highpass"; cf.frequency.value = 4500;
+    const cg = fx.createGain(); cg.gain.value = 0.016;
+    cr.connect(cf); cf.connect(cg); cg.connect(master); cr.start();
+    lofiCrackle = cr;
+    lofiOn = true;
+    lofiBar(0);
+  } else if (!on && lofiOn){
+    lofiOn = false;
+    if (lofiTmr){ clearTimeout(lofiTmr); lofiTmr = null; }
+    try { lofiCrackle.stop(); } catch(e){}
+    lofiCrackle = null;
+  }
+  ui.musicBtn.classList.toggle("off", !lofiOn);
+}
+
+const canisters = [];
+for (const [cax, caz] of [[-6.5, 2.2], [4.6, -3.4], [8.2, 0.6]]){
+  const cd = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.6, 12),
+    new THREE.MeshStandardMaterial({ color: 0x36e0c8, roughness: 0.4, metalness: 0.3, emissive: 0x2ed5b0, emissiveIntensity: 0.7 }));
+  cd.position.set(cax, 0.3, caz);
+  scene.add(cd);
+  const crg = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 16), stdMat(0xccdddd, 0.5, 0.6));
+  crg.position.set(cax, 0.62, caz); crg.rotation.x = Math.PI/2;
+  scene.add(crg);
+  canisters.push({ x: cax, z: caz, t: 0, base: cd, ring: crg });
+}
+
 const fishFlock = [];
 [["models/decor/fish_clown.glb", 0.55, 3.5, -9.5, 2.2, 0.9, 0],
  ["models/decor/fish_tang.glb", 0.5, 5.2, -10.5, 3.1, -0.7, 2.1],
- ["models/decor/fish_angler.glb", 0.7, 6.5, -8.6, 1.1, 0.5, 4.0]].forEach(c => {
+ ["models/decor/fish_angler.glb", 0.7, 6.5, -8.6, 1.1, 0.5, 4.0],
+ ["models/decor/fish_lion.glb", 0.55, -3.0, -10.0, 2.6, 0.8, 1.3],
+ ["models/decor/fish_grouper.glb", 0.6, 1.5, -9.8, 1.6, -0.9, 3.4]].forEach(c => {
   modelLoader.load(c[0], gltf => {
     const f = gltf.scene;
     fitModel(f, c[1], () => {});
@@ -577,17 +687,17 @@ const sparks = [];
 
 const handMat = stdMat(0xcc4422, 0.6, 0.15);
 const gloves = new THREE.Group();
-const palmL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.16), handMat);
-palmL.position.set(-0.22, -0.28, -0.4);
+const palmL = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.22), handMat);
+palmL.position.set(-0.24, -0.3, -0.44);
 gloves.add(palmL);
 const palmR = palmL.clone();
 palmR.position.x = 0.22;
 gloves.add(palmR);
 const wrench = new THREE.Group();
-const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.34, 8), stdMat(0x9fb4c4, 0.35, 0.9));
+const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.44, 8), stdMat(0x9fb4c4, 0.35, 0.9));
 handle.rotation.x = Math.PI/2;
 wrench.add(handle);
-const whead = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.018, 6, 12, Math.PI*1.4), stdMat(0x9fb4c4, 0.35, 0.9));
+const whead = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.022, 6, 12, Math.PI*1.4), stdMat(0x9fb4c4, 0.35, 0.9));
 whead.position.z = -0.2;
 wrench.add(whead);
 wrench.position.set(0.24, -0.26, -0.44);
@@ -898,6 +1008,7 @@ function resetGame(){
   yaw = Math.PI; pitch = 0;
   net.guestL = 0; net.gRep = false; net.gRun = false; net.buddyPos = { x: 0, z: 4.5, ry: 0 };
   spawnDelay = 3;
+  for (const cn of canisters){ cn.t = 0; cn.base.visible = cn.ring.visible = true; }
   buddy.visible = false;
   buddyTag.style.display = "none";
   for (const s of systems){
@@ -916,6 +1027,7 @@ function lockPointer(){
 function beginRun(useMicWanted, isHost){
   useMic = useMicWanted;
   initAudio();
+  setLofi(true);
   ui.menu.classList.add("hidden");
   ui.lobby.classList.add("hidden");
   ui.help.classList.add("hidden");
@@ -1100,9 +1212,10 @@ function update(dt){
     const len = Math.hypot(dx, dz);
     dx /= len; dz /= len;
     const speed = run ? 6 : 3.4;
-    const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
-    const wx = dx * cosY - dz * sinY;
-    const wz = dx * sinY + dz * cosY;
+    const th = yaw + Math.PI;
+    const cosY = Math.cos(th), sinY = Math.sin(th);
+    const wx = dx * cosY + dz * sinY;
+    const wz = -dx * sinY + dz * cosY;
     playerPos.x = clamp(playerPos.x + wx * speed * dt, -ROOM.w/2 + 1.2, ROOM.w/2 - 1.2);
     playerPos.z = clamp(playerPos.z + wz * speed * dt, -ROOM.d/2 + 1.2, ROOM.d/2 - 1.2);
     stepDist += speed * dt;
@@ -1155,15 +1268,32 @@ function update(dt){
     if (noise < 0.05 && totalLoud < 0.2 && neighborD < 100) neighborD += 1.4 * dt;
     neighborD = clamp(neighborD, 0, 100);
 
+    if (net.mode !== "guest"){
+      for (const cn of canisters){
+        if (cn.t > 0){
+          cn.t -= dt;
+          cn.base.visible = cn.ring.visible = cn.t <= 0;
+        } else {
+          cn.base.visible = cn.ring.visible = true;
+          cn.base.rotation.y = tt * 1.5;
+          cn.ring.position.y = 0.62 + Math.sin(tt * 2 + cn.x) * 0.05;
+          if (Math.hypot(cn.x - playerPos.x, cn.z - playerPos.z) < 1.1){
+            oxygen = Math.min(100, oxygen + 20);
+            cn.t = 30;
+            toastMsg("+20 кислорода — новый баллон!", 2);
+            beep(880, 0.12, "sine", 0.8);
+          }
+        }
+      }
+    }
     if (spawnDelay > 0 && !nextSystem()){
       spawnDelay -= dt;
       if (spawnDelay <= 0) spawnBroken();
     }
 
-    const fixedText = systems.filter(s => !s.broken).length;
-    if (oxygen <= 0) endScreen("ВОЗДУХ КОНЧИЛСЯ", false, ["Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedText + "/" + systems.length]);
-    else if (water >= 100) endScreen("ОТСЕК ЗАТОПИЛО", false, ["Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedText + "/" + systems.length]);
-    else if (neighborD <= 0) endScreen("ОНО ТЕБЯ НАШЛО", false, ["Шумели вы знатно.", "Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedText + "/" + systems.length]);
+      if (oxygen <= 0) endScreen("ВОЗДУХ КОНЧИЛСЯ", false, ["Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedCount + "/" + systems.length]);
+    else if (water >= 100) endScreen("ОТСЕК ЗАТОПИЛО", false, ["Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedCount + "/" + systems.length]);
+    else if (neighborD <= 0) endScreen("ОНО ТЕБЯ НАШЛО", false, ["Шумели вы знатно.", "Продержались: " + runTime.toFixed(1) + " с", "Систем починено: " + fixedCount + "/" + systems.length]);
   } else {
     if (repLocal) applyStepVisual(active, loud, dt, 1);
     if (active){
@@ -1228,6 +1358,42 @@ function drawSysList(){
     }).join("<br>");
 }
 
+function mkPoster(x, y, z, ry, w, h, paint){
+  const cv = document.createElement("canvas"); cv.width = 256; cv.height = 340;
+  const c = cv.getContext("2d");
+  paint(c, cv);
+  const t = new THREE.CanvasTexture(cv);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t }));
+  m.position.set(x, y, z); m.rotation.y = ry;
+  scene.add(m);
+}
+mkPoster(-12.78, 2.1, 2.0, Math.PI/2, 1.15, 1.5, c => {
+  c.fillStyle = "#ffd93d"; c.fillRect(0,0,256,340);
+  c.fillStyle = "#ff4757"; for (let i = 0; i < 6; i++) c.fillRect(0, i*58, 256, 20);
+  c.fillStyle = "#101820"; c.textAlign = "center";
+  c.font = "bold 44px sans-serif"; c.fillText("ГЛУБИНА", 128, 120);
+  c.font = "bold 72px sans-serif"; c.fillText("40 м", 128, 205);
+  c.font = "20px sans-serif"; c.fillText("без права на ошибку", 128, 266);
+});
+mkPoster(-12.78, 2.1, -2.4, Math.PI/2, 1.15, 1.5, c => {
+  c.fillStyle = "#f4ede0"; c.fillRect(0,0,256,340);
+  c.strokeStyle = "#ff4757"; c.lineWidth = 14; c.strokeRect(12,12,232,316);
+  c.fillStyle = "#ff4757"; c.textAlign = "center";
+  c.font = "bold 58px sans-serif"; c.fillText("НЕ", 128, 120);
+  c.fillText("ШУМЕТЬ!", 128, 190);
+  c.fillStyle = "#101820"; c.font = "24px sans-serif"; c.fillText("Сосед слышит", 128, 266);
+});
+mkPoster(12.78, 2.1, 2.0, -Math.PI/2, 1.15, 1.5, c => {
+  c.fillStyle = "#0d3350"; c.fillRect(0,0,256,340);
+  c.fillStyle = "#7ff0ff"; c.textAlign = "center";
+  c.font = "bold 36px sans-serif"; c.fillText("ПАМЯТКА", 128, 62);
+  c.font = "24px sans-serif";
+  c.fillText("Труба хлещет?", 128, 126);
+  c.fillStyle = "#ffd93d"; c.fillText("→ КРИЧАТЬ", 128, 166);
+  c.fillStyle = "#7ff0ff"; c.fillText("Щиток дымит?", 128, 232);
+  c.fillStyle = "#2ed573"; c.fillText("→ ШЁПТАТЬ", 128, 272);
+});
+
 const screens = [];
 function mkScreen(x){
   const cv = document.createElement("canvas");
@@ -1244,7 +1410,6 @@ function mkScreen(x){
 mkScreen(-3.8);
 mkScreen(3.8);
 function drawScreens(){
-  const fixed = systems.filter(p => !p.broken).length;
   for (const s of screens){
     const c = s.ctx;
     c.fillStyle = "#04101c";
@@ -1253,7 +1418,7 @@ function drawScreens(){
     c.strokeRect(4, 4, 248, 136);
     c.fillStyle = oxygen < 30 ? "#ff4757" : "#7ff0ff";
     c.font = "bold 20px monospace";
-    c.fillText("СИСТЕМЫ: " + fixed + "/" + systems.length, 16, 34);
+    c.fillText("ПОЧИНЕНО: " + fixedCount + "/" + systems.length, 16, 34);
     c.fillStyle = water > 50 ? "#ffd93d" : "#7ff0ff";
     c.font = "15px monospace";
     c.fillText("ВОДА    " + Math.floor(water) + "%", 16, 62);
@@ -1300,7 +1465,7 @@ function updateFx(dt){
     const dist = Math.hypot(active.x - playerPos.x, active.z - playerPos.z);
     obj = active.label + " · " + dist.toFixed(1) + " м · " + (active.kind === "fuse" ? "⚡ только шёпот" : "💧 крик, шёпот тоже катит");
   } else if (S.val === "play" && !active){
-    obj = "Всплываем...";
+    obj = "Осмотрись — системы начнут сыпаться...";
   }
   if (S.val === "play" && hintT > 0) obj += " · WASD — идти, мышь — смотреть";
   ui.obj.textContent = obj;
@@ -1438,6 +1603,7 @@ function toggleHelp(){
 window.addEventListener("keydown", e => {
   const c = e.code;
   if (c === "KeyM"){ toggleMute(); return; }
+  if (c === "KeyB"){ setLofi(!lofiOn); return; }
   if (c === "KeyG" && S.val === "play"){ toggleFs(); e.preventDefault(); return; }
   if (c === "KeyH"){ toggleHelp(); return; }
   if (c === "KeyP"){ if (S.val === "play") pauseGame(); else if (S.val === "paused") resumeGame(); return; }
