@@ -125,7 +125,7 @@ class App(ctk.CTk):
         page.grid_columnconfigure(0, weight=1)
         page.grid_rowconfigure(2, weight=1)
 
-        top = self._card(page)
+        top = ctk.CTkFrame(page, corner_radius=14, fg_color=CARD)
         top.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 10))
 
         row = ctk.CTkFrame(top, fg_color="transparent")
