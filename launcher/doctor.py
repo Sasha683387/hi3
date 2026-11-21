@@ -149,9 +149,11 @@ def _forge_toml(txt):
                 out["version"] = m.group(1)
                 continue
         if section == "dep" and re.match(r"(type|mandatory)\s*=", line):
-            optional = "optional" in line or not re.search(
-                r"(required|mandatory|true)", line
-            )
+            optional = "optional" in line
+            if not optional and re.search(r"mandatory\s*=\s*false", line):
+                optional = True
+            elif not optional and not re.search(r"(required|mandatory|true)", line):
+                optional = True
             continue
         m = re.match(r"versionRange\s*=\s*[\"']([^\"']+)[\"']", line)
         if m and section == "dep" and dep_target and optional is not None:
@@ -269,11 +271,12 @@ def _dep_findings(infos, by_id):
                             "level": "error",
                             "text": (
                                 "Моду %r нужен мод %r версии %s — его нет в mods. "
-                                "Найти можно в разделе «Моды» (или удали %s)"
+                                "Лекарь попробует поставить его сам (или удали %s)"
                                 % (owner, target, rng, info["file"])
                             ),
                             "files": [info["file"]],
                             "fix": [],
+                            "missing": target,
                         }
                     )
                 continue
@@ -434,6 +437,68 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                 }
             )
     return findings
+
+
+def _norm(s):
+    return re.sub(r"[\s_\-]+", "", (s or "").lower())
+
+
+def install_missing(mods_dir, game_version, loader="vanilla", log=None):
+    """Ставит недостающие обязательные зависимости с Modrinth.
+    Возвращает (installed, failed, findings после пересканирования)."""
+    import time as _t
+
+    from . import modrinth as mr
+
+    if log is None:
+        log = lambda m: None
+    if not os.path.isdir(mods_dir) or loader in (None, "vanilla") or not game_version:
+        return [], [], scan(mods_dir, game_version, loader)
+    targets = []
+    for f in scan(mods_dir, game_version, loader):
+        mt = f.get("missing")
+        mt = [mt] if isinstance(mt, str) else (mt or [])
+        for t in mt:
+            if t not in targets:
+                targets.append(t)
+    installed, failed = [], []
+    for modid in targets:
+        try:
+            log("ищу «%s» в Modrinth…" % modid)
+            hits = mr.search(
+                re.sub(r"[_\-]+", " ", modid),
+                12,
+                project_type="mod",
+                game_version=game_version,
+                loader=loader,
+            )
+            n = _norm(modid)
+            pick = None
+            score = 0
+            for h in hits:
+                ns, nt = _norm(h.get("slug")), _norm(h.get("title"))
+                if not ns and not nt:
+                    continue
+                if n and (ns == n or nt == n):
+                    s = 2
+                elif n and (ns.startswith(n) or n.startswith(ns) or nt.startswith(n)):
+                    s = 1
+                else:
+                    s = 0
+                if s > score:
+                    pick, score = h, s
+            if not pick:
+                failed.append((modid, "не нашёл точного совпадения в Modrinth"))
+                continue
+            log("ставлю «%s» (%s)…" % (modid, pick.get("slug")))
+            names = mr.install(
+                pick["project_id"], game_version, loader, mods_dir
+            )
+            installed.append((modid, names))
+            _t.sleep(1)
+        except Exception as e:
+            failed.append((modid, str(e)))
+    return installed, failed, scan(mods_dir, game_version, loader)
 
 
 def autofix(mods_dir, game_version, loader_type="vanilla"):

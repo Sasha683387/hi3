@@ -1,6 +1,9 @@
 """Smoke tests for the launcher core. Run: python3 tests/test_core.py"""
+import json
 import os
 import sys
+import tempfile
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -278,6 +281,55 @@ def test_doctor():
     print("doctor checks OK (scan + autofix + deps)")
 
 
+def test_install_missing():
+    tmp = tempfile.mkdtemp(prefix="docinst-")
+    toml = (
+        '[[mods]]\nmodId="sinthetic"\n'
+        '[[dependencies.sinthetic]]\nmodId="cloth_config"\n'
+        'type="required"\nversionRange="*"\n'
+    )
+    with zipfile.ZipFile(os.path.join(tmp, "fake.jar"), "w") as z:
+        z.writestr("META-INF/mods.toml", toml)
+
+    from launcher import doctor, modrinth
+
+    calls = {"search": 0, "install": 0}
+
+    def fake_search(q, *a, **kw):
+        calls["search"] += 1
+        return [{
+            "slug": "cloth-config",
+            "title": "Cloth Config API",
+            "project_id": "proj-123",
+        }]
+
+    def fake_install(pid, gv, ld, dest, seen=None):
+        calls["install"] += 1
+        assert pid == "proj-123", pid
+        with zipfile.ZipFile(cloth_name(dest), "w") as z:
+            z.writestr("fabric.mod.json", json.dumps({"id": "cloth_config"}))
+        return ["cloth-config-fabric-8.0.75.jar"]
+
+    def cloth_name(dest):
+        return os.path.join(dest, "cloth-config.jar")
+
+    modrinth.search = fake_search
+    modrinth.install = fake_install
+
+    logs = []
+    installed, failed, rem = doctor.install_missing(
+        tmp, "1.20.1", "forge", log=logs.append
+    )
+    assert os.path.exists(cloth_name(tmp))
+    assert len(installed) == 1 and installed[0][0] == "cloth_config", installed
+    assert not failed, failed
+    assert calls["search"] == 1 and calls["install"] == 1, calls
+    missing_left = [f for f in rem if f.get("missing")]
+    assert not missing_left, rem
+    assert any("Modrinth" in m for m in logs), logs
+    print("doctor install_missing OK (mocked Modrinth)")
+
+
 def test_elyby_error_path():
     from launcher import elyby
 
@@ -308,6 +360,7 @@ if __name__ == "__main__":
     test_fabric()
     test_loaders()
     test_doctor()
+    test_install_missing()
     test_elyby_error_path()
     test_ms_invalid_client()
     print("ALL CORE TESTS PASSED")

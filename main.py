@@ -1100,6 +1100,14 @@ class App(ctk.CTk):
                         use_loader or "vanilla",
                     )
                     self.ui_queue.put(("doctor_fixed", fixed))
+                    if findings:
+                        _dep, _fail, findings = doctor.install_missing(
+                            config.MODS_DIR,
+                            self.settings.get("last_version") or "",
+                            use_loader or "vanilla",
+                            log=lambda m: self.ui_queue.put(("doctor_dep", m)),
+                        )
+                        self.ui_queue.put(("doctor_dep_fail", _fail))
                 if findings:
                     self._doctor_answer = False
                     self._doctor_evt.clear()
@@ -1236,6 +1244,13 @@ class App(ctk.CTk):
                         self.log_line("[лекарь] убрал %s (%s) → trash" % (fn, lvl))
                     if payload:
                         self.set_status("Лекарь починил %d файлов ✓" % len(payload))
+                elif kind == "doctor_dep":
+                    self.log_line("[лекарь] %s" % payload)
+                elif kind == "doctor_dep_fail":
+                    for name, why in payload:
+                        self.log_line("[лекарь] не смог поставить %s: %s" % (name, why))
+                    if payload:
+                        self.set_status("Лекарь: не смог поставить %d зав. — смотри консоль" % len(payload))
                 elif kind == "update_status":
                     self.log_line("[обновление] %s" % payload)
                     self.set_status(str(payload))
@@ -1281,9 +1296,19 @@ class App(ctk.CTk):
             self.ui_queue.put(("doctor_fixed", fixed))
             if findings:
                 self.ui_queue.put(("doctor", findings))
-            else:
-                self.set_status("Лекарь: всё починил — запускаю ✓")
-                self._doctor_decide(True)
+                _deps, _fail, findings = doctor.install_missing(
+                    config.MODS_DIR,
+                    self.settings.get("last_version") or "",
+                    self.LOADER_KEYS.get(self.settings.get("loader_type") or "")
+                    or "vanilla",
+                    log=lambda m: self.ui_queue.put(("doctor_dep", m)),
+                )
+                self.ui_queue.put(("doctor_dep_fail", _fail))
+                if findings:
+                    self.ui_queue.put(("doctor", findings))
+                    return
+            self.set_status("Лекарь: всё починил — запускаю ✓")
+            self._doctor_decide(True)
         except Exception as e:
             self.log_line("[лекарь] не смог починить сам: %s" % e)
             self._doctor_decide(False)
