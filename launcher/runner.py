@@ -185,6 +185,16 @@ def build_command(meta, account, settings, ram_gb=None, os_key=None):
         except Exception:
             pass
 
+    if meta.get("loader_type") in ("forge", "neoforge"):
+        jvm.append("-Dforgewrapper.librariesDir=" + config.LIBS_DIR)
+        jvm.append("-Dforgewrapper.minecraft=" + jar_path)
+        inst = meta.get("loader_installer")
+        if inst:
+            jvm.append(
+                "-Dforgewrapper.installer="
+                + os.path.join(config.LIBS_DIR, inst.replace("/", os.sep))
+            )
+
     jvm_args = _modern_args(meta, ctx, "jvm", os_key)
     if jvm_args:
         jvm.extend(jvm_args)

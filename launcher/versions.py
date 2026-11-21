@@ -44,11 +44,14 @@ def version_entry(version_id):
 
 
 def version_meta(version_id):
-    """Full version JSON, cached in game dir. Fabric ids are merged."""
+    """Full version JSON, cached in game dir. Loader ids are merged."""
     from . import fabric as _fabric
+    from . import loaders as _loaders
 
     if version_id.startswith("fabric-loader-"):
         return _fabric.merged_meta(version_id)
+    if _loaders.is_loader(version_id):
+        return _loaders.merged_meta(version_id)
     vdir = os.path.join(config.VERSIONS_DIR, version_id)
     meta_path = os.path.join(vdir, "%s.json" % version_id)
     if os.path.exists(meta_path) and os.path.getsize(meta_path) > 100:

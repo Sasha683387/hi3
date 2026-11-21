@@ -83,6 +83,32 @@ def test_fabric():
     print("fabric merge/command OK (%s)" % fid)
 
 
+def test_loaders():
+    from launcher import loaders, versions, runner
+
+    for vid, mainmark in [
+        ("forge-47.4.2-1.20.1", "forgewrapper"),
+        ("neoforge-21.1.202-1.21.1", "forgewrapper"),
+        ("quilt-0.26.4-1.21.1", "KnotClient"),
+    ]:
+        merged = loaders.merged_meta(vid)
+        assert merged["id"] == vid
+        assert mainmark in merged["mainClass"]
+        assert merged.get("downloads", {}).get("client")
+        assert merged.get("loader_installer") is not None or "quilt" in vid
+        cmd = runner.build_command(
+            merged,
+            {"type": "offline", "name": "Steve", "uuid": "x", "token": "0"},
+            {"ram_gb": 2},
+        )
+        joined = " ".join(str(c) for c in cmd)
+        assert "${" not in joined and "--username Steve" in joined
+        assert mainmark in joined
+        if "forge" in vid or "neoforge" in vid:
+            assert joined.count("forgewrapper.") >= 2
+    print("forge/neoforge/quilt merges OK")
+
+
 def test_elyby_error_path():
     from launcher import elyby
 
@@ -111,6 +137,7 @@ if __name__ == "__main__":
     test_rules()
     test_manifest_and_meta()
     test_fabric()
+    test_loaders()
     test_elyby_error_path()
     test_ms_invalid_client()
     print("ALL CORE TESTS PASSED")

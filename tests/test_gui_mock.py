@@ -180,6 +180,10 @@ def main():
     app.on_ely_login()
     pump(4.0)
     app.show_page("Играть")
+    app.loader_type.set("Fabric")
+    app._loader_type_changed()
+    app.loader_type.set("Ваниль")
+    app._loader_type_changed()
 
     try:
         app.on_ms_login()
@@ -197,6 +201,7 @@ def main():
 
     from launcher import versions as versions_mod
 
+    app.loader_type.set("Ваниль")
     app.version_box._val = versions_mod.list_versions(snapshots=False)[0]
     app.on_play()
     pump(30.0, 0.5)
@@ -210,7 +215,8 @@ def main():
 
     # mods page: render + queue handlers, no network
     app.show_page("Моды")
-    app.fabric_var.set(True)
+    app.loader_type.set("Fabric")
+    app._loader_type_changed()
     app._render_mod_results([])
     app._render_mod_results(
         [{"title": "Sodium", "project_id": "AABBCCDD",

@@ -74,8 +74,7 @@ class App(ctk.CTk):
             page.grid_remove()
 
         self.show_page("Играть")
-        if self.fabric_var.get():
-            self._fabric_toggled()
+        self._loader_type_changed()
         self.after(250, self._drain_queue)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_versions()
@@ -156,28 +155,33 @@ class App(ctk.CTk):
             text_color=TEXT, font=font(14),
         )
         self.version_box.pack(anchor="w", pady=(4, 0))
-        self.fabric_var = ctk.BooleanVar(
-            value=bool(self.settings.get("fabric", False))
-        )
-        ctk.CTkCheckBox(
-            row, text="Fabric (моды)", variable=self.fabric_var,
-            command=self._fabric_toggled, font=font(12), text_color=MUTED,
-            fg_color=ACCENT, hover_color=ACCENT_HOVER,
-        ).pack(side="right", pady=(0, 2))
         self.snap_var = ctk.BooleanVar(value=bool(self.settings.get("snapshots")))
         ctk.CTkCheckBox(
             row, text="снапшоты", variable=self.snap_var,
             command=self._snap_toggled, font=font(12), text_color=MUTED,
             fg_color=ACCENT, hover_color=ACCENT_HOVER,
-        ).pack(side="right", pady=(24, 0))
+        ).pack(side="right", pady=(0, 2))
         self.loader_box = ctk.CTkComboBox(
-            row, values=["..."], width=170, height=34, corner_radius=10,
+            row, values=["..."], width=150, height=34, corner_radius=10,
             border_width=0, fg_color="#262d3a", button_color=CARD_HOVER,
             button_hover_color="#323c4c", dropdown_fg_color="#262d3a",
             dropdown_hover_color=CARD_HOVER, text_color=TEXT, font=font(13),
         )
-        self.loader_box.pack(side="right", padx=(0, 10), pady=(0, 2))
-        self.loader_box.grid_remove()
+        self.loader_type = ctk.CTkComboBox(
+            row, values=["Ваниль", "Fabric", "Forge", "NeoForge", "Quilt"],
+            width=130, height=38, corner_radius=10, border_width=0,
+            fg_color="#262d3a", button_color=CARD_HOVER,
+            button_hover_color="#323c4c", dropdown_fg_color="#262d3a",
+            dropdown_hover_color=CARD_HOVER, text_color=TEXT,
+            font=font(13), command=self._loader_type_changed,
+        )
+        prev = self.settings.get("loader_type") or (
+            "Fabric" if self.settings.get("fabric") else "Ваниль"
+        )
+        if prev not in ("Ваниль", "Fabric", "Forge", "NeoForge", "Quilt"):
+            prev = "Ваниль"
+        self.loader_type.set(prev)
+        self.loader_type.pack(side="right", padx=(0, 10), pady=(0, 2))
 
         chips = ctk.CTkFrame(page, fg_color="transparent")
         chips.grid(row=1, column=0, sticky="ew", padx=18)
@@ -225,25 +229,57 @@ class App(ctk.CTk):
         self._update_chips()
         return page
 
-    def _fabric_toggled(self):
-        on = bool(self.fabric_var.get())
+    LOADER_KEYS = {
+        "Fabric": "fabric",
+        "Forge": "forge",
+        "NeoForge": "neoforge",
+        "Quilt": "quilt",
+    }
+
+    def _current_loader_type(self):
+        lt = getattr(self, "loader_type", None)
+        return lt.get() if lt else "Ваниль"
+
+    def _loader_type_changed(self, choice=None):
+        on = choice in self.LOADER_KEYS if choice else (
+            self._current_loader_type() in self.LOADER_KEYS
+        )
         if on:
-            self.loader_box.grid()
-            if self.loader_box.get() in ("...", ""):
+            self.loader_box.pack_forget()
+            self.loader_box.pack(
+                side="right", padx=(0, 10), pady=(0, 2), before=self.loader_type
+            )
+            if self.loader_box.get() in ("...", "", "загрузка...", "—"):
                 self.loader_box.set("загрузка...")
                 threading.Thread(target=self._loaders_thread, daemon=True).start()
         else:
-            self.loader_box.grid_remove()
-        self.settings["fabric"] = on
+            self.loader_box.pack_forget()
+        self.settings["loader_type"] = self._current_loader_type()
+        self.settings["fabric"] = self.settings["loader_type"] == "Fabric"
         config.save_settings(self.settings)
         self._update_chips()
 
     def _loaders_thread(self):
         try:
-            vals = fabric.loader_versions()[:12]
+            key = self.LOADER_KEYS.get(self._current_loader_type())
+            if key == "fabric":
+                vals = fabric.loader_versions()[:12]
+            else:
+                game = self.settings.get("last_version") or ""
+                if not game:
+                    raise ValueError("сначала выбери версию Minecraft")
+                from launcher import loaders
+
+                vals = loaders.loader_versions(key, game)[:12]
+            if not vals:
+                raise ValueError(
+                    "нет сборок для Minecraft %s — выбери другую версию игры"
+                    % (self.settings.get("last_version") or "?")
+                )
             self.ui_queue.put(("loaders", vals))
         except Exception as e:
-            self.ui_queue.put(("versions_fail", "Fabric: %s" % e))
+            self.ui_queue.put(("versions_fail", "%s: %s" % (self._current_loader_type(), e)))
+            self.ui_queue.put(("loaders", ["—"]))
 
     def _snap_toggled(self):
         self.settings["snapshots"] = bool(self.snap_var.get())
@@ -261,9 +297,10 @@ class App(ctk.CTk):
             self.chip_acc.configure(text="Аккаунт: %s (%s)" % (acc.get("name", "?"), mark))
         else:
             self.chip_acc.configure(text="Аккаунт: не выбран", text_color="#d8a24a")
-        if getattr(self, "fabric_var", None) and self.fabric_var.get():
+        lt = self._current_loader_type()
+        if lt in self.LOADER_KEYS:
             self.chip_loader.configure(
-                text="Загрузчик: Fabric %s" % self.loader_box.get()
+                text="Загрузчик: %s %s" % (lt, self.loader_box.get())
             )
         else:
             self.chip_loader.configure(text="Загрузчик: ваниль")
@@ -304,8 +341,8 @@ class App(ctk.CTk):
         ).pack(anchor="w", padx=16, pady=(14, 0))
         ctk.CTkLabel(
             search_card,
-            text="Версия игры берётся с вкладки «Играть», Fabric должен быть включён. "
-                 "Зависимости (Fabric API и др.) скачаются сами.",
+            text="Версия игры берётся с вкладки «Играть», там же выбери загрузчик "
+                 "(Fabric / Forge / NeoForge / Quilt). Зависимости (Fabric API и др.) скачаются сами.",
             font=font(11.5), text_color=MUTED, justify="left", wraplength=620,
         ).pack(anchor="w", padx=16)
         row = ctk.CTkFrame(search_card, fg_color="transparent")
@@ -335,14 +372,14 @@ class App(ctk.CTk):
     def on_mod_search(self):
         query = self.mods_query.get().strip()
         game = self.settings.get("last_version") or ""
-        if self.fabric_var.get():
+        if self.LOADER_KEYS.get(self._current_loader_type()):
             self.mod_status.configure(text="Ищу по Modrinth...")
             threading.Thread(
                 target=self._mods_search_thread, args=(query, game), daemon=True
             ).start()
         else:
             self.mod_status.configure(
-                text="Моды работают с Fabric — включи галочку Fabric на вкладке «Играть»",
+                text="Выбери загрузчик (Fabric / Forge / NeoForge / Quilt) на вкладке «Играть» — моды без лоадера не заведутся",
                 text_color="#d8a24a",
             )
 
@@ -389,24 +426,24 @@ class App(ctk.CTk):
             self.mod_status.configure(text="Сначала выбери версию на вкладке «Играть»",
                                       text_color="#d8a24a")
             return
-        if not self.fabric_var.get():
+        loader_key = self.LOADER_KEYS.get(self._current_loader_type())
+        if not loader_key:
             self.mod_status.configure(
-                text="Включи галочку Fabric на вкладке «Играть» (моды без лоадера не заведутся)",
+                text="Выбери загрузчик (Fabric / Forge / NeoForge / Quilt) на вкладке «Играть» (моды без лоадера не заведутся)",
                 text_color="#d8a24a",
             )
             return
-        loader = self.settings.get("loader") or "0.16.5"
         self.busy_mod = True
         self.mod_status.configure(text="Скачиваю %s (версия игры %s)..." % (title, game),
                                   text_color=MUTED)
         threading.Thread(
             target=self._mod_install_thread,
-            args=(project_id, game, loader, title), daemon=True,
+            args=(project_id, game, loader_key, title), daemon=True,
         ).start()
 
-    def _mod_install_thread(self, project_id, game, loader, title):
+    def _mod_install_thread(self, project_id, game, loader_key, title):
         try:
-            names = modrinth.install(project_id, game, loader, config.MODS_DIR)
+            names = modrinth.install(project_id, game, loader_key, config.MODS_DIR)
             self.ui_queue.put(("mod_done", (title, names)))
         except Exception as e:
             self.ui_queue.put(("mods_fail", "%s: %s" % (title, e)))
@@ -830,37 +867,44 @@ class App(ctk.CTk):
         if not version_id or version_id == "загрузка...":
             self.set_status("Версии ещё загружаются, секунду")
             return
-        use_fabric = bool(self.fabric_var.get())
+        use_loader = self.LOADER_KEYS.get(self._current_loader_type())
         loader = self.loader_box.get()
         self.busy = True
         self.play_btn.configure(state="disabled", text="ЗАПУСК...")
         self.settings["last_version"] = version_id
-        self.settings["fabric"] = use_fabric
+        self.settings["loader_type"] = self._current_loader_type()
+        self.settings["fabric"] = use_loader == "fabric"
         self.settings["loader"] = loader
         config.save_settings(self.settings)
         self.show_page("Консоль")
         self.log_line(
             "=== подготовка %s (%s) ==="
-            % (version_id, "Fabric " + loader if use_fabric else "ваниль")
+            % (version_id, self._current_loader_type() + " " + loader if use_loader else "ваниль")
         )
 
         def work():
             try:
-                if use_fabric:
-                    if loader in ("...", "загрузка...", ""):
+                if use_loader:
+                    if loader in ("...", "загрузка...", "—", ""):
                         raise ValueError(
-                            "Выбери версию Fabric loader рядом с галочкой Fabric"
+                            "Выбери версию загрузчика %s рядом с выбором типа"
+                            % self._current_loader_type()
                         )
+                    game = self.settings["last_version"]
                     try:
-                        version_id = fabric.profile(
-                            self.settings["last_version"], loader
-                        )["id"]
+                        if use_loader == "fabric":
+                            version_id = fabric.profile(game, loader)["id"]
+                        else:
+                            from launcher import loaders
+
+                            version_id = loaders.version_id(use_loader, loader, game)
+                            loaders.patch(use_loader, loader, game)
                     except Exception:
                         raise ValueError(
-                            "Fabric не поддерживает версию %s — выбери релиз 1.14+"
-                            % self.settings["last_version"]
+                            "%s не доступен для версии %s — попробуй другую версию"
+                            % (self._current_loader_type(), game)
                         ) from None
-                    self.ui_queue.put(("prog", ("Fabric", 0, 1, version_id)))
+                    self.ui_queue.put(("prog", ("Лоадер", 0, 1, version_id)))
                 active = self._ensure_token(acc)
                 meta = installer.install_version(
                     version_id,
