@@ -177,6 +177,7 @@ def read_info(path, loader_type=None):
         "fabric": False,
         "forge": False,
         "provided": [],
+        "nested": False,
     }
     try:
         with zipfile.ZipFile(path) as z:
@@ -227,12 +228,14 @@ def read_info(path, loader_type=None):
                 if mid:
                     info["ids"].append(str(mid))
             provided = []
+            info["nested"] = False
             for n in sorted(z.namelist()):
                 if not n.endswith(".jar"):
                     continue
                 if not (n.startswith("META-INF/jars/")
                         or n.startswith("META-INF/jarjar/")):
                     continue
+                info["nested"] = True
                 try:
                     import io
 
@@ -456,9 +459,16 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
 
     findings.extend(_dep_findings(infos, by_id))
 
+    multi_tokens = ("all", "universal", "uni", "multi", "port")
     if loader_type in ("forge", "neoforge"):
         for info in infos:
-            if info["fabric"] and not info["forge"]:
+            low_fn = info["file"].lower()
+            if (
+                info["fabric"]
+                and not info["forge"]
+                and not info.get("nested")
+                and not any(t in low_fn for t in multi_tokens)
+            ):
                 findings.append(
                     {
                         "level": "warn",
@@ -470,7 +480,12 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                 )
     elif loader_type in ("fabric", "quilt"):
         for info in infos:
-            if info["forge"] and not info["fabric"]:
+            if (
+                info["forge"]
+                and not info["fabric"]
+                and not info.get("nested")
+                and not any(t in info["file"].lower() for t in multi_tokens)
+            ):
                 findings.append(
                     {
                         "level": "warn",
