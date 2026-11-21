@@ -8,6 +8,7 @@ import sys
 import time
 import types
 
+os.environ.setdefault("SASHALAUNCHER_NO_UPDATER", "1")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 CTK_METHODS = (
@@ -92,7 +93,7 @@ def make_ctk_module():
         def mainloop(self, *a):
             raise RuntimeError("mainloop must not be called in tests")
 
-        def after(self, ms, fn):
+        def after(self, ms, fn=None, *args):
             CTk._afters.append(fn)
 
         def protocol(self, name, fn):

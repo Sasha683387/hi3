@@ -1,13 +1,16 @@
 """SashaLauncher — GUI (CustomTkinter)."""
 
+import os
 import queue
+import subprocess
+import sys
 import threading
 import webbrowser
 
 import customtkinter as ctk
 
 from launcher import __version__ as APP_VERSION
-from launcher import accounts, config, elyby, fabric, installer, microsoft, modrinth, offline, runner, versions
+from launcher import accounts, config, elyby, fabric, installer, microsoft, modrinth, offline, runner, updater, versions
 
 ctk.set_appearance_mode("dark")
 
@@ -79,6 +82,7 @@ class App(ctk.CTk):
         self.show_page("Играть")
         self._loader_type_changed()
         self.after(250, self._drain_queue)
+        self.after(2500, self._auto_update, False)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_versions()
         self._refresh_account_header()
@@ -935,6 +939,9 @@ class App(ctk.CTk):
         self._btn(actions, "Сохранить настройки", self.on_save_settings).pack(
             side="left"
         )
+        self._btn(actions, "Проверить обновления", lambda: self._auto_update(True)).pack(
+            side="left", padx=10
+        )
         ctk.CTkButton(
             actions, text="Открыть папку игры", height=40, corner_radius=10,
             font=font(13), fg_color=CARD_HOVER, hover_color="#323c4c",
@@ -1185,9 +1192,48 @@ class App(ctk.CTk):
                     self._play_done()
                 elif kind == "game":
                     self.log_line(payload)
+                elif kind == "update_status":
+                    self.log_line("[обновление] %s" % payload)
+                    self.set_status(str(payload))
+                elif kind == "update_done":
+                    self.log_line("[обновление] готово — перезапускаю лаунчер")
+                    self.set_status("Обновление установлено ✓")
+                    try:
+                        app_path = updater.app_dir()
+                        subprocess.Popen(
+                            [sys.executable, os.path.join(app_path, "main.py")],
+                            cwd=app_path,
+                        )
+                    except Exception as e:
+                        self.log_line("[обновление] перезапусти вручную: %s" % e)
+                    self.after(1200, self.destroy)
         except queue.Empty:
             pass
         self.after(250, self._drain_queue)
+
+    # ================= self-update =================
+
+    def _auto_update(self, force=False):
+        if os.environ.get("SASHALAUNCHER_NO_UPDATER"):
+            return
+        threading.Thread(
+            target=self._update_work, args=(bool(force),), daemon=True
+        ).start()
+
+    def _update_work(self, force):
+        try:
+            local = updater.local_stamp()
+            if not local and not force:
+                return
+            remote = updater.remote_stamp()
+            if not remote or (remote == local and not force):
+                return
+            self.ui_queue.put(("update_status", "Появилась новая версия — обновляю…"))
+            updater.install_update()
+            self.ui_queue.put(("update_done", None))
+        except Exception as e:
+            if force:
+                self.ui_queue.put(("update_status", "Обновление не удалось: %s" % e))
 
     def _play_done(self):
         self.busy = False
