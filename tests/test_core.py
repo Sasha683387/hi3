@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import urllib.error
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -293,7 +294,15 @@ def test_install_missing():
 
     from launcher import doctor, modrinth
 
-    calls = {"search": 0, "install": 0}
+    calls = {"versions": 0, "search": 0, "install": 0}
+
+    def fake_versions_for(pid, gv, ld=None):
+        calls["versions"] += 1
+        if str(pid) == "proj-123":
+            return [{"name": "cloth v1"}]
+        raise urllib.error.HTTPError(
+            "url", 404, "not found", {}, None
+        )
 
     def fake_search(q, *a, **kw):
         calls["search"] += 1
@@ -303,9 +312,8 @@ def test_install_missing():
             "project_id": "proj-123",
         }]
 
-    def fake_install(pid, gv, ld, dest, seen=None):
+    def fake_inst_ver(version, gv, ld, dest, seen=None):
         calls["install"] += 1
-        assert pid == "proj-123", pid
         with zipfile.ZipFile(cloth_name(dest), "w") as z:
             z.writestr("fabric.mod.json", json.dumps({"id": "cloth_config"}))
         return ["cloth-config-fabric-8.0.75.jar"]
@@ -313,8 +321,9 @@ def test_install_missing():
     def cloth_name(dest):
         return os.path.join(dest, "cloth-config.jar")
 
+    modrinth.versions_for = fake_versions_for
     modrinth.search = fake_search
-    modrinth.install = fake_install
+    modrinth.install_from_version = fake_inst_ver
 
     logs = []
     installed, failed, rem = doctor.install_missing(
@@ -323,11 +332,28 @@ def test_install_missing():
     assert os.path.exists(cloth_name(tmp))
     assert len(installed) == 1 and installed[0][0] == "cloth_config", installed
     assert not failed, failed
-    assert calls["search"] == 1 and calls["install"] == 1, calls
+    assert calls["search"] >= 1 and calls["install"] == 1, calls
     missing_left = [f for f in rem if f.get("missing")]
     assert not missing_left, rem
     assert any("Modrinth" in m for m in logs), logs
-    print("doctor install_missing OK (mocked Modrinth)")
+
+    failed2 = [("ghostmod", "нет на Modrinth")]
+    with zipfile.ZipFile(os.path.join(tmp, "needer.jar"), "w") as z:
+        z.writestr(
+            "META-INF/mods.toml",
+            '[[mods]]\nmodId="needer"\n'
+            '[[dependencies.needer]]\nmodId="ghostmod"\n'
+            'type="required"\nversionRange="*"\n',
+        )
+    fixed_p, rem_p = doctor.purge_failed(
+        tmp, "1.20.1", "forge", [t for t, _w in failed2]
+    )
+    assert "needer.jar" in [f for f, _l in fixed_p], fixed_p
+    assert not any(f.get("missing") for f in rem_p), rem_p
+    ghost_left = [f for f in rem_p if "ghostmod" in f["text"]]
+    assert not ghost_left, rem_p
+    print("doctor install_missing OK (mocked Modrinth + purge_failed)")
+    print("doctor install_missing OK (mocked Modrinth + purge_failed)")
 
 
 def test_elyby_error_path():

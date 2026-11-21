@@ -1285,28 +1285,49 @@ class App(ctk.CTk):
         self.set_status("Лекарь чинит файлы…")
         threading.Thread(target=self._doctor_fix_thread, daemon=True).start()
 
+    def _doctor_loader(self):
+        return (
+            self.LOADER_KEYS.get(self.settings.get("loader_type") or "")
+            or "vanilla"
+        )
+
     def _doctor_fix_thread(self):
+        gv = self.settings.get("last_version") or ""
+        ld = self._doctor_loader()
         try:
-            fixed, findings = doctor.autofix(
-                config.MODS_DIR,
-                self.settings.get("last_version") or "",
-                self.LOADER_KEYS.get(self.settings.get("loader_type") or "")
-                or "vanilla",
-            )
+            self.set_status("Лекарь: ставлю недостающие зависимости с Modrinth…")
+            fixed, findings = doctor.autofix(config.MODS_DIR, gv, ld)
             self.ui_queue.put(("doctor_fixed", fixed))
-            if findings:
-                self.ui_queue.put(("doctor", findings))
+            attempted = set()
+            fresh = set()
+            for _ in range(3):
+                missing_ids = set()
+                for f in findings:
+                    mt = f.get("missing")
+                    mt = [mt] if isinstance(mt, str) else (mt or [])
+                    for t in mt:
+                        if t.lower() not in attempted:
+                            missing_ids.add(t)
+                if not missing_ids:
+                    break
                 _deps, _fail, findings = doctor.install_missing(
-                    config.MODS_DIR,
-                    self.settings.get("last_version") or "",
-                    self.LOADER_KEYS.get(self.settings.get("loader_type") or "")
-                    or "vanilla",
+                    config.MODS_DIR, gv, ld, skip=attempted,
                     log=lambda m: self.ui_queue.put(("doctor_dep", m)),
                 )
+                attempted |= missing_ids
+                attempted |= {t for t, _w in _fail}
+                for _t, names in _deps:
+                    fresh |= set(names)
                 self.ui_queue.put(("doctor_dep_fail", _fail))
-                if findings:
-                    self.ui_queue.put(("doctor", findings))
-                    return
+                if _fail:
+                    fixed2, findings = doctor.purge_failed(
+                        config.MODS_DIR, gv, ld, [t for t, _w in _fail],
+                        fresh=fresh,
+                    )
+                    self.ui_queue.put(("doctor_fixed", fixed2))
+            if findings:
+                self.ui_queue.put(("doctor", findings))
+                return
             self.set_status("Лекарь: всё починил — запускаю ✓")
             self._doctor_decide(True)
         except Exception as e:

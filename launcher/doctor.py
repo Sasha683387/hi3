@@ -119,7 +119,7 @@ def _forge_toml(txt):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        m = re.match(r"\[\[(.*)\]\]$", line)
+        m = re.match(r"\[\[(.*)\]\]", line)
         if m:
             key = m.group(1)
             if key == "mods":
@@ -176,6 +176,7 @@ def read_info(path, loader_type=None):
         "broken": False,
         "fabric": False,
         "forge": False,
+        "provided": [],
     }
     try:
         with zipfile.ZipFile(path) as z:
@@ -225,9 +226,66 @@ def read_info(path, loader_type=None):
                 mid = (d.get("quilt_loader") or {}).get("id")
                 if mid:
                     info["ids"].append(str(mid))
+            provided = []
+            for n in sorted(z.namelist()):
+                if not n.endswith(".jar"):
+                    continue
+                if not (n.startswith("META-INF/jars/")
+                        or n.startswith("META-INF/jarjar/")):
+                    continue
+                try:
+                    import io
+
+                    nested = {"ids": [], "version": None, "deps": []}
+                    with zipfile.ZipFile(io.BytesIO(z.read(n))) as nz:
+                        _ids_from_nested(nz, nested)
+                except (zipfile.BadZipFile, OSError, ValueError):
+                    continue
+                for i in nested["ids"]:
+                    if i and i not in provided and i not in info["ids"]:
+                        provided.append(i)
+                if nested["version"] and not info["version"]:
+                    info["version"] = nested["version"]
+                for dep in nested["deps"]:
+                    if dep not in info["deps"]:
+                        info["deps"].append(dep)
+            if provided:
+                if not info["ids"]:
+                    info["ids"].extend(provided)
+                else:
+                    if "provided" not in info:
+                        info["provided"] = []
+                    for i in provided:
+                        if i not in info["ids"] and i not in info["provided"]:
+                            info["provided"].append(i)
     except (zipfile.BadZipFile, OSError):
         info["broken"] = True
     return info
+
+
+def _ids_from_nested(z, info):
+    names = set(z.namelist())
+    for cand in ("META-INF/mods.toml", "META-INF/neoforge.mods.toml"):
+        if cand in names:
+            d = _forge_toml(z.read(cand).decode("utf-8", "replace"))
+            for i in d["ids"]:
+                if i and i not in info["ids"]:
+                    info["ids"].append(i)
+            if not info["version"] and d["version"]:
+                info["version"] = d["version"]
+            if d["deps"]:
+                info["deps"] = info["deps"] + [
+                    dep for dep in d["deps"] if dep not in info["deps"]
+                ]
+            return
+    if "fabric.mod.json" in names:
+        d = json.loads(z.read("fabric.mod.json").decode("utf-8", "replace"))
+        mid = d.get("id")
+        if mid and str(mid) not in info["ids"]:
+            info["ids"].append(str(mid))
+        v = d.get("version")
+        if isinstance(v, str) and "${" not in v and not info["version"]:
+            info["version"] = v
 
 
 def _trash_path(fn, tdir):
@@ -252,16 +310,16 @@ def _dep_findings(infos, by_id):
     ver_by_id = {}
     ins_by_id = {}
     for info in infos:
-        for mid in info["ids"]:
-            key = mid.lower()
-            ins_by_id.setdefault(key, info)
-            if info.get("version"):
-                ver_by_id.setdefault(key, info["version"])
+        for mid in list(info["ids"]) + list(info.get("provided") or []):
+            for key in _peers(mid):
+                ins_by_id.setdefault(key, info)
+                if info.get("version"):
+                    ver_by_id.setdefault(key, info["version"])
     for info in infos:
         owner = info["ids"][0] if info["ids"] else info["file"]
         for target, rng, required in info.get("deps") or []:
             key = (target or "").lower()
-            if key in _SYSTEM_IDS or not key:
+            if key in _SYSTEM_IDS or not key or key.startswith("fabric-"):
                 continue
             installed = ins_by_id.get(key)
             if not installed:
@@ -443,7 +501,75 @@ def _norm(s):
     return re.sub(r"[\s_\-]+", "", (s or "").lower())
 
 
-def install_missing(mods_dir, game_version, loader="vanilla", log=None):
+_SLUG_ALIASES = {
+    "kotlinforge": ("kotlin-for-forge", "kotlinforforge"),
+    "puzzlesapi": ("puzzles-lib",),
+    "puzzleslib": ("puzzles-lib",),
+    "architecturyapi": ("architectury-api",),
+    "trashslot": ("trashslot",),
+}
+
+_ID_GROUPS = (
+    {"kotlinforge", "kotlinforforge", "kotlin-for-forge"},
+    {"puzzlesapi", "puzzleslib"},
+)
+
+
+def _peers(mid):
+    low = (mid or "").lower()
+    peers = {low}
+    for g in _ID_GROUPS:
+        if low in g:
+            peers |= set(g)
+    return peers
+
+
+def _dep_targets(mods_dir, game_version, loader):
+    targets = []
+    for f in scan(mods_dir, game_version, loader):
+        mt = f.get("missing")
+        mt = [mt] if isinstance(mt, str) else (mt or [])
+        for t in mt:
+            if t.lower() not in _SYSTEM_IDS and t not in targets:
+                targets.append(t)
+    return targets
+
+
+def _project_versions(mr, slug, game_version, loader):
+    try:
+        v = mr.versions_for(slug, game_version, loader)
+        if v:
+            return v
+    except Exception:
+        pass
+    if loader and loader != "vanilla":
+        try:
+            return mr.versions_for(slug, game_version, None)
+        except Exception:
+            return []
+    return []
+
+
+def _resolve_dep(mr, modid, game_version, loader):
+    """Пробует прямые slugs, потом поиск. Возвращает (версия | None, slug)."""
+    low = (modid or "").lower()
+    slug = re.sub(r"[^a-z0-9\-]+", "-", low).strip("-")
+    cands = [low, slug]
+    cands += list(_SLUG_ALIASES.get(low, ()))
+    if low.startswith("fabric-") and not low.endswith("-api"):
+        cands.append("fabric-api")
+    ordered = []
+    for c in cands:
+        if c and c not in ordered:
+            ordered.append(c)
+    for c in ordered:
+        v = _project_versions(mr, c, game_version, loader)
+        if v:
+            return v[0], c
+    return None, None
+
+
+def install_missing(mods_dir, game_version, loader="vanilla", log=None, skip=()):
     """Ставит недостающие обязательные зависимости с Modrinth.
     Возвращает (installed, failed, findings после пересканирования)."""
     import time as _t
@@ -454,51 +580,111 @@ def install_missing(mods_dir, game_version, loader="vanilla", log=None):
         log = lambda m: None
     if not os.path.isdir(mods_dir) or loader in (None, "vanilla") or not game_version:
         return [], [], scan(mods_dir, game_version, loader)
-    targets = []
-    for f in scan(mods_dir, game_version, loader):
-        mt = f.get("missing")
-        mt = [mt] if isinstance(mt, str) else (mt or [])
-        for t in mt:
-            if t not in targets:
-                targets.append(t)
+    skip_ids = {str(s).lower() for s in skip or ()}
+    targets = [
+        t for t in _dep_targets(mods_dir, game_version, loader)
+        if t.lower() not in skip_ids
+    ]
     installed, failed = [], []
     for modid in targets:
         try:
             log("ищу «%s» в Modrinth…" % modid)
-            hits = mr.search(
-                re.sub(r"[_\-]+", " ", modid),
-                12,
-                project_type="mod",
-                game_version=game_version,
-                loader=loader,
-            )
-            n = _norm(modid)
-            pick = None
-            score = 0
-            for h in hits:
-                ns, nt = _norm(h.get("slug")), _norm(h.get("title"))
-                if not ns and not nt:
-                    continue
-                if n and (ns == n or nt == n):
-                    s = 2
-                elif n and (ns.startswith(n) or n.startswith(ns) or nt.startswith(n)):
-                    s = 1
-                else:
-                    s = 0
-                if s > score:
-                    pick, score = h, s
-            if not pick:
-                failed.append((modid, "не нашёл точного совпадения в Modrinth"))
+            version, slug = _resolve_dep(mr, modid, game_version, loader)
+            if version is None:
+                version, slug = _search_dep(mr, modid, game_version, loader)
+            if version is None:
+                failed.append(
+                    (modid, "нет на Modrinth (вероятно CurseForge-мод) — поставь сам или удали мод-проситель")
+                )
                 continue
-            log("ставлю «%s» (%s)…" % (modid, pick.get("slug")))
-            names = mr.install(
-                pick["project_id"], game_version, loader, mods_dir
+            log("ставлю «%s» (%s)…" % (modid, slug))
+            names = mr.install_from_version(
+                version, game_version, loader, mods_dir
             )
             installed.append((modid, names))
             _t.sleep(1)
         except Exception as e:
             failed.append((modid, str(e)))
     return installed, failed, scan(mods_dir, game_version, loader)
+
+
+def _search_dep(mr, modid, game_version, loader):
+    """Фолбэк через поиск; возвращает (версия | None, slug)."""
+    queries = [re.sub(r"[_\-]+", " ", modid), modid]
+    n = _norm(modid)
+    best = None
+    best_score = 0
+    for q in queries:
+        try:
+            hits = mr.search(
+                q, 12, project_type="mod",
+                game_version=game_version, loader=loader,
+            )
+            if not hits and loader not in (None, "vanilla"):
+                hits = mr.search(
+                    q, 12, project_type="mod", game_version=game_version,
+                )
+        except Exception:
+            hits = []
+        for h in hits:
+            ns, nt = _norm(h.get("slug")), _norm(h.get("title"))
+            if (not ns and not nt) or not n:
+                continue
+            if ns == n or nt == n:
+                s = 2
+            elif ns.startswith(n) or n.startswith(ns) or nt.startswith(n):
+                s = 1
+            else:
+                s = 0
+            if s > best_score:
+                best, best_score = h, s
+        if best_score >= 2:
+            break
+    if not best or best_score < 1:
+        return None, None
+    try:
+        vlist = mr.versions_for(best["project_id"], game_version, loader)
+    except Exception:
+        vlist = []
+    if not vlist and loader not in (None, "vanilla"):
+        try:
+            vlist = mr.versions_for(best["project_id"], game_version, None)
+        except Exception:
+            return None, None
+    if not vlist:
+        return None, None
+    return vlist[0], best.get("slug")
+
+
+def purge_failed(mods_dir, game_version, loader="vanilla", failed_targets=(),
+                 fresh=()):
+    """Карантинит моды, чьи обязательные зависимости поставить не удалось.
+    Трогает только ошибки "missing"; fresh — файлы, только что поставленные
+    Лекарем (их не выкидываем). Возвращает (fixed, оставшиеся)."""
+    if not os.path.isdir(mods_dir) or not failed_targets:
+        return [], scan(mods_dir, game_version, loader)
+    bad = {t.lower() for t in failed_targets}
+    fresh = {os.path.basename(f) for f in fresh or ()}
+    tdir = os.path.join(config.APP_DIR, "trash")
+    os.makedirs(tdir, exist_ok=True)
+    fixed = []
+    for f in scan(mods_dir, game_version, loader):
+        mt = f.get("missing")
+        mt = [mt] if isinstance(mt, str) else (mt or [])
+        if not any(t.lower() in bad for t in mt):
+            continue
+        for fn in f.get("files") or []:
+            if fn in fresh:
+                continue
+            src = os.path.join(mods_dir, fn)
+            if not os.path.isfile(src):
+                continue
+            try:
+                shutil.move(src, _trash_path(fn, tdir))
+                fixed.append((fn, "зависимость не нашлась"))
+            except OSError:
+                pass
+    return fixed, scan(mods_dir, game_version, loader)
 
 
 def autofix(mods_dir, game_version, loader_type="vanilla"):
