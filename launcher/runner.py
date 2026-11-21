@@ -105,6 +105,8 @@ def classpath_for(meta, os_key):
 
     libs = []
     for lib in meta.get("libraries", []):
+        if lib.get("x_download_only"):
+            continue
         if not installer._rules_ok(lib.get("rules"), os_key):
             continue
         dl = lib.get("downloads", {})

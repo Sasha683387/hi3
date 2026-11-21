@@ -104,8 +104,30 @@ def test_loaders():
         joined = " ".join(str(c) for c in cmd)
         assert "${" not in joined and "--username Steve" in joined
         assert mainmark in joined
-        if "forge" in vid or "neoforge" in vid:
-            assert joined.count("forgewrapper.") >= 2
+        cplibs = runner.classpath_for(merged, "windows" if os.name == "nt" else "linux")
+        for lib in merged["libraries"]:
+            if lib.get("x_download_only"):
+                rel = (lib.get("downloads") or {}).get("artifact", {}).get("path", "")
+                assert rel
+                assert os.path.join(config.LIBS_DIR, rel.replace("/", os.sep)) not in cplibs, rel
+        print(vid, "merge/command OK")
+    forge = loaders.merged_meta("forge-47.4.2-1.20.1")
+    dl_only = [
+        (l.get("downloads") or {}).get("artifact", {}).get("path", "")
+        for l in forge["libraries"]
+        if l.get("x_download_only")
+    ]
+    assert any("ForgeAutoRenamingTool" in p for p in dl_only), dl_only
+    assert any("asm-9.2" in p for p in dl_only), dl_only
+    cmd = runner.build_command(
+        forge,
+        {"type": "offline", "name": "Steve", "uuid": "x", "token": "0"},
+        {"ram_gb": 2},
+    )
+    joined = " ".join(str(c) for c in cmd)
+    assert "ForgeAutoRenamingTool" not in joined
+    assert "asm-9.2" not in joined and "asm-9.6" not in joined
+    assert any(p.endswith("universal.jar") for p in dl_only), dl_only
     print("forge/neoforge/quilt merges OK")
 
 

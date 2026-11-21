@@ -156,7 +156,10 @@ def _merge(version_id, loader_type, patch_meta, parent):
     libs = []
     for lib in list(parent.get("libraries", [])) + list(
         patch_meta.get("libraries", [])
-    ) + list(patch_meta.get("mavenFiles", [])):
+    ) + [
+        dict(m, x_download_only=True)
+        for m in patch_meta.get("mavenFiles", [])
+    ]:
         lib = _normalize(lib)
         k = _artifact_path(lib) or json.dumps(lib, sort_keys=True)
         if k in seen:
