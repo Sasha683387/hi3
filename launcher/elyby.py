@@ -27,7 +27,7 @@ def _ygg_request(url, payload):
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "SashaLauncher/1.0",
+            "User-Agent": "SashaLauncher/vRelease",
         },
         method="POST",
     )

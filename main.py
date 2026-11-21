@@ -13,6 +13,8 @@ from launcher import accounts, config, elyby, installer, microsoft, offline, run
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
+APP_VERSION = "vRelease"
+
 ACCENTS = "#2f7d4f"
 ACCENT_HOVER = "#3f9c64"
 STATUS_IDLE = ">_ готово"
@@ -23,7 +25,7 @@ class App(ctk.CTk):
         super().__init__()
         config.ensure_dirs()
         self.settings = config.load_settings()
-        self.title("SashaLauncher — Minecraft")
+        self.title("SashaLauncher %s — Minecraft" % APP_VERSION)
         self.geometry("760x560")
         self.minsize(680, 500)
 
@@ -42,7 +44,7 @@ class App(ctk.CTk):
         self.acc_label = ctk.CTkLabel(header, text="", font=("Segoe UI", 13))
         self.acc_label.pack(side="right")
 
-        self.tabs = ctk.CTabView(
+        self.tabs = ctk.CTkTabview(
             self, corner_radius=12, segmented_button_selected_color=ACCENTS,
             segmented_button_selected_hover_color=ACCENT_HOVER,
         )

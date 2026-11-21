@@ -6,6 +6,7 @@ import subprocess
 import threading
 
 from . import config, elyby
+from . import __version__ as LAUNCHER_VER
 
 
 class JavaNotFound(RuntimeError):
@@ -153,7 +154,7 @@ def build_command(meta, account, settings, ram_gb=None, os_key=None):
         "${assets_root}": config.ASSETS_DIR,
         "${game_assets}": os.path.join(config.ASSETS_DIR, "virtual", "legacy"),
         "${launcher_name}": "SashaLauncher",
-        "${launcher_version}": "1.0.0",
+        "${launcher_version}": LAUNCHER_VER,
         "${resolution_width}": "854",
         "${resolution_height}": "480",
         "${user_properties}": "{}",

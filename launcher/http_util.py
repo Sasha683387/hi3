@@ -5,7 +5,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-USER_AGENT = "SashaLauncher/1.0 (+minecraft-launcher)"
+USER_AGENT = "SashaLauncher/vRelease (+minecraft-launcher)"
 
 CHUNK = 256 * 1024
 
