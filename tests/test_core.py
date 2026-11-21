@@ -60,6 +60,29 @@ def test_manifest_and_meta():
     print("manifest/meta/command OK (version=%s, java=%s)" % (release, cmd[0]))
 
 
+def test_fabric():
+    from launcher import fabric, versions, runner
+
+    fid = "fabric-loader-0.16.5-1.21.1"
+    merged = fabric.merged_meta(fid)
+    assert merged["id"] == fid
+    assert "KnotClient" in merged["mainClass"]
+    assert merged.get("downloads", {}).get("client")
+    assert any(
+        (l.get("url") or "").startswith("https://maven.fabricmc.net")
+        for l in merged["libraries"]
+    )
+    cmd = runner.build_command(
+        merged,
+        {"type": "offline", "name": "Steve", "uuid": "x", "token": "0"},
+        {"ram_gb": 2},
+    )
+    joined = " ".join(str(c) for c in cmd)
+    assert "${" not in joined and "--username Steve" in joined
+    assert "KnotClient" in joined
+    print("fabric merge/command OK (%s)" % fid)
+
+
 def test_elyby_error_path():
     from launcher import elyby
 
@@ -87,6 +110,7 @@ if __name__ == "__main__":
     test_offline_uuid()
     test_rules()
     test_manifest_and_meta()
+    test_fabric()
     test_elyby_error_path()
     test_ms_invalid_client()
     print("ALL CORE TESTS PASSED")

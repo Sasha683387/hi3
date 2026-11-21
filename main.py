@@ -7,7 +7,7 @@ import webbrowser
 import customtkinter as ctk
 
 from launcher import __version__ as APP_VERSION
-from launcher import accounts, config, elyby, installer, microsoft, offline, runner, versions
+from launcher import accounts, config, elyby, fabric, installer, microsoft, offline, runner, versions
 
 ctk.set_appearance_mode("dark")
 
@@ -55,11 +55,13 @@ class App(ctk.CTk):
 
         self.pages = {}
         self._page_play = self._build_play_page()
+        self._page_files = self._build_files_page()
         self._page_account = self._build_account_page()
         self._page_settings = self._build_settings_page()
         self._page_console = self._build_console_page()
         for name, page in [
             ("Играть", self._page_play),
+            ("Файлы", self._page_files),
             ("Аккаунт", self._page_account),
             ("Настройки", self._page_settings),
             ("Консоль", self._page_console),
@@ -69,6 +71,8 @@ class App(ctk.CTk):
             page.grid_remove()
 
         self.show_page("Играть")
+        if self.fabric_var.get():
+            self._fabric_toggled()
         self.after(250, self._drain_queue)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_versions()
@@ -92,7 +96,9 @@ class App(ctk.CTk):
         )
 
         self.nav_buttons = {}
-        for i, name in enumerate(["Играть", "Аккаунт", "Настройки", "Консоль"], start=1):
+        for i, name in enumerate(
+            ["Играть", "Файлы", "Аккаунт", "Настройки", "Консоль"], start=1
+        ):
             b = ctk.CTkButton(
                 bar, text=name, height=40, corner_radius=10, anchor="w",
                 font=font(14), fg_color="transparent", hover_color=CARD_HOVER,
@@ -113,6 +119,8 @@ class App(ctk.CTk):
         for p in self.pages.values():
             p.grid_remove()
         self.pages[name].grid()
+        if name == "Файлы":
+            self.refresh_files()
         for n, b in self.nav_buttons.items():
             active = n == name
             b.configure(
@@ -145,12 +153,28 @@ class App(ctk.CTk):
             text_color=TEXT, font=font(14),
         )
         self.version_box.pack(anchor="w", pady=(4, 0))
+        self.fabric_var = ctk.BooleanVar(
+            value=bool(self.settings.get("fabric", False))
+        )
+        ctk.CTkCheckBox(
+            row, text="Fabric (моды)", variable=self.fabric_var,
+            command=self._fabric_toggled, font=font(12), text_color=MUTED,
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+        ).pack(side="right", pady=(0, 2))
         self.snap_var = ctk.BooleanVar(value=bool(self.settings.get("snapshots")))
         ctk.CTkCheckBox(
-            row, text="показывать снапшоты", variable=self.snap_var,
+            row, text="снапшоты", variable=self.snap_var,
             command=self._snap_toggled, font=font(12), text_color=MUTED,
             fg_color=ACCENT, hover_color=ACCENT_HOVER,
         ).pack(side="right", pady=(24, 0))
+        self.loader_box = ctk.CTkComboBox(
+            row, values=["..."], width=170, height=34, corner_radius=10,
+            border_width=0, fg_color="#262d3a", button_color=CARD_HOVER,
+            button_hover_color="#323c4c", dropdown_fg_color="#262d3a",
+            dropdown_hover_color=CARD_HOVER, text_color=TEXT, font=font(13),
+        )
+        self.loader_box.pack(side="right", padx=(0, 10), pady=(0, 2))
+        self.loader_box.grid_remove()
 
         chips = ctk.CTkFrame(page, fg_color="transparent")
         chips.grid(row=1, column=0, sticky="ew", padx=18)
@@ -158,6 +182,16 @@ class App(ctk.CTk):
             chips, text="", font=font(12), text_color=MUTED, justify="left"
         )
         self.chip_ram.pack(side="left")
+        ctk.CTkLabel(chips, text="  ·  ", font=font(12), text_color="#3a4250").pack(
+            side="left"
+        )
+        ctk.CTkLabel(chips, text="  ·  ", font=font(12), text_color="#3a4250").pack(
+            side="left"
+        )
+        self.chip_loader = ctk.CTkLabel(
+            chips, text="", font=font(12), text_color=MUTED, justify="left"
+        )
+        self.chip_loader.pack(side="left")
         ctk.CTkLabel(chips, text="  ·  ", font=font(12), text_color="#3a4250").pack(
             side="left"
         )
@@ -188,6 +222,26 @@ class App(ctk.CTk):
         self._update_chips()
         return page
 
+    def _fabric_toggled(self):
+        on = bool(self.fabric_var.get())
+        if on:
+            self.loader_box.grid()
+            if self.loader_box.get() in ("...", ""):
+                self.loader_box.set("загрузка...")
+                threading.Thread(target=self._loaders_thread, daemon=True).start()
+        else:
+            self.loader_box.grid_remove()
+        self.settings["fabric"] = on
+        config.save_settings(self.settings)
+        self._update_chips()
+
+    def _loaders_thread(self):
+        try:
+            vals = fabric.loader_versions()[:12]
+            self.ui_queue.put(("loaders", vals))
+        except Exception as e:
+            self.ui_queue.put(("versions_fail", "Fabric: %s" % e))
+
     def _snap_toggled(self):
         self.settings["snapshots"] = bool(self.snap_var.get())
         config.save_settings(self.settings)
@@ -204,6 +258,12 @@ class App(ctk.CTk):
             self.chip_acc.configure(text="Аккаунт: %s (%s)" % (acc.get("name", "?"), mark))
         else:
             self.chip_acc.configure(text="Аккаунт: не выбран", text_color="#d8a24a")
+        if getattr(self, "fabric_var", None) and self.fabric_var.get():
+            self.chip_loader.configure(
+                text="Загрузчик: Fabric %s" % self.loader_box.get()
+            )
+        else:
+            self.chip_loader.configure(text="Загрузчик: ваниль")
 
     def _refresh_versions(self):
         snap = bool(self.settings.get("snapshots"))
@@ -226,6 +286,80 @@ class App(ctk.CTk):
             self.version_box.set(last)
         elif ids:
             self.version_box.set(ids[0])
+
+    # ================= files page =================
+
+    def _build_files_page(self):
+        page = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+        page.grid_columnconfigure((0, 1), weight=1, uniform="f")
+
+        defs = [
+            ("mods", "МОДЫ", config.MODS_DIR,
+             ".jar файлы модов. Нужен Fabric: включи галочку Fabric на вкладке «Играть». "
+             "Шейдеры требуют мод Iris (для новых версий).", (".jar",)),
+            ("rpacks", "РЕСУРСПАКИ", config.RPACKS_DIR,
+             ".zip файлы. Включаются в игре: Настройки → Наборы ресурсов.", (".zip",)),
+            ("shaders", "ШЕЙДЕРЫ", config.SHADERS_DIR,
+             ".zip пакеты шейдеров. Требуется Fabric + мод Iris: "
+             "modrinth.com/mod/iris. В игре: Настройки → Видео → Шейдеры.", (".zip",)),
+            ("datapacks", "ДАТАПАКИ", config.SAVES_DIR,
+             ".zip кладут в папку конкретного мира: saves/<твой мир>/datapacks. "
+             "Кнопка ниже открывает папку миров.", (".zip",)),
+        ]
+        self.file_cards = {}
+        for i, (key, title, folder, hint, ext) in enumerate(defs):
+            card = ctk.CTkFrame(page, corner_radius=14, fg_color=CARD)
+            card.grid(row=i // 2, column=i % 2, sticky="nsew",
+                      padx=(18 if i % 2 == 0 else 6, 6 if i % 2 == 0 else 18),
+                      pady=(14 if i < 2 else 8, 0))
+            ctk.CTkLabel(card, text=title, font=font(13, True), text_color=TEXT).pack(
+                anchor="w", padx=16, pady=(14, 0)
+            )
+            ctk.CTkLabel(card, text=hint, font=font(11.5), text_color=MUTED,
+                         justify="left", wraplength=340).pack(anchor="w", padx=16)
+            count_label = ctk.CTkLabel(
+                card, text="", font=font(12), text_color=TEXT, anchor="w",
+                justify="left",
+            )
+            count_label.pack(anchor="w", padx=16, pady=(6, 0), fill="x")
+            btns = ctk.CTkFrame(card, fg_color="transparent")
+            btns.pack(fill="x", padx=16, pady=(8, 14))
+            ctk.CTkButton(
+                btns, text="Открыть папку", height=34, corner_radius=9,
+                font=font(12), fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                text_color="#0f130e",
+                command=lambda d=folder: self._open_folder(d),
+            ).pack(side="left")
+            ctk.CTkButton(
+                btns, text="Обновить", height=34, width=100, corner_radius=9,
+                font=font(12), fg_color=CARD_HOVER, hover_color="#323c4c",
+                command=lambda k=key: self.refresh_files(),
+            ).pack(side="left", padx=8)
+            self.file_cards[key] = (folder, count_label, ext)
+        self.refresh_files()
+        return page
+
+    def refresh_files(self):
+        import os as _os
+
+        for key, (folder, label, ext) in getattr(self, "file_cards", {}).items():
+            try:
+                names = sorted(
+                    f for f in _os.listdir(folder)
+                    if f.lower().endswith(ext) and not f.startswith(".")
+                )
+            except OSError:
+                names = []
+            if names:
+                label.configure(
+                    text="%d файл(ов):\n · %s"
+                    % (len(names), "\n · ".join(names[:12]))
+                    + ("\n …" if len(names) > 12 else "")
+                )
+            else:
+                label.configure(
+                    text="пусто (или расширения не .%s)" % "/.".join(e[1:] for e in ext)
+                )
 
     # ================= account page =================
 
@@ -572,15 +706,29 @@ class App(ctk.CTk):
         if not version_id or version_id == "загрузка...":
             self.set_status("Версии ещё загружаются, секунду")
             return
+        use_fabric = bool(self.fabric_var.get())
+        loader = self.loader_box.get()
         self.busy = True
         self.play_btn.configure(state="disabled", text="ЗАПУСК...")
         self.settings["last_version"] = version_id
+        self.settings["fabric"] = use_fabric
+        self.settings["loader"] = loader
         config.save_settings(self.settings)
         self.show_page("Консоль")
-        self.log_line("=== подготовка %s ===" % version_id)
+        self.log_line(
+            "=== подготовка %s (%s) ==="
+            % (version_id, "Fabric " + loader if use_fabric else "ваниль")
+        )
 
         def work():
             try:
+                if use_fabric:
+                    if loader in ("...", "загрузка...", ""):
+                        raise ValueError(
+                            "Выбери версию Fabric loader рядом с галочкой Fabric"
+                        )
+                    version_id = fabric.profile(self.settings["last_version"], loader)["id"]
+                    self.ui_queue.put(("prog", ("Fabric", 0, 1, version_id)))
                 active = self._ensure_token(acc)
                 meta = installer.install_version(
                     version_id,
@@ -629,6 +777,10 @@ class App(ctk.CTk):
                 kind, payload = self.ui_queue.get_nowait()
                 if kind == "versions":
                     self._apply_versions(payload)
+                elif kind == "loaders":
+                    self.loader_box.configure(values=payload)
+                    last = self.settings.get("loader")
+                    self.loader_box.set(last if last in payload else payload[0])
                 elif kind == "versions_fail":
                     self.set_status("Сеть: не получил список версий (%s)" % payload[:80])
                 elif kind == "prog":

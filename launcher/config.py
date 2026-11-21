@@ -12,6 +12,10 @@ ACCOUNTS_FILE = os.path.join(APP_DIR, "accounts.json")
 SETTINGS_FILE = os.path.join(APP_DIR, "settings.json")
 MANIFEST_CACHE = os.path.join(APP_DIR, "manifest_cache.json")
 AUTHLIB_DIR = os.path.join(APP_DIR, "authlib-injector.jar")
+MODS_DIR = os.path.join(GAME_DIR, "mods")
+RPACKS_DIR = os.path.join(GAME_DIR, "resourcepacks")
+SHADERS_DIR = os.path.join(GAME_DIR, "shaderpacks")
+SAVES_DIR = os.path.join(GAME_DIR, "saves")
 
 DEFAULT_SETTINGS = {
     "ram_gb": 4,
@@ -42,5 +46,6 @@ def save_settings(settings):
 
 
 def ensure_dirs():
-    for d in (APP_DIR, GAME_DIR, VERSIONS_DIR, ASSETS_DIR, LIBS_DIR):
+    for d in (APP_DIR, GAME_DIR, VERSIONS_DIR, ASSETS_DIR, LIBS_DIR,
+              MODS_DIR, RPACKS_DIR, SHADERS_DIR, SAVES_DIR):
         os.makedirs(d, exist_ok=True)
