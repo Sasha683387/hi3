@@ -171,7 +171,6 @@ def build_command(meta, account, settings, ram_gb=None, os_key=None):
         "-Xmx%dM" % (ram * 1024),
         "-Xms512M",
         "-XX:+UseG1GC",
-        "-XX:G1NewSizePercent=20",
         "-Djava.library.path=" + natives_dir,
         "-Dorg.lwjgl.librarypath=" + natives_dir,
     ]
