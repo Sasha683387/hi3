@@ -147,6 +147,9 @@ def test_doctor():
     assert doctor.version_ok("1.20.1", "[1.19,2.0)")
     assert not doctor.version_ok("1.20.1", "[1.19,1.20)")
     assert doctor.version_ok("1.21.3", "1.21.x")
+    assert not doctor.version_ok("1.2.0-hotfix", "[1.2.0,1.2.0]")
+    assert doctor.version_ok("1.20.1", "[1.20.1,1.20.1]")
+    assert doctor.version_ok("1.20.1", ">=1.20 <=1.20.5")
 
     tmp = tempfile.mkdtemp(prefix="doctortest_")
 
@@ -216,7 +219,63 @@ def test_doctor():
         os.path.join(tmp, "embeddium-0.3.3+mc1.20.1.jar")
     ), "embeddium must stay"
     assert not any(f["level"] == "error" for f in remaining), remaining
-    print("doctor checks OK (scan + autofix)")
+
+    dep_dir = tempfile.mkdtemp(prefix="depdoctor_")
+
+    def dep_jar(fn, toml):
+        with zipfile.ZipFile(os.path.join(dep_dir, fn), "w") as z:
+            z.writestr("META-INF/mods.toml", toml)
+
+    dep_jar(
+        "tacaddon.jar",
+        "[[mods]]\nmodId=\"tacaddon\"\nversion=\"1.0.0\"\n"
+        "[[dependencies.tacaddon]]\nmodId=\"tac\"\ntype=\"required\"\n"
+        "versionRange=\"[1.2.0,1.2.0]\"\n",
+    )
+    dep_jar(
+        "tac.jar",
+        "[[mods]]\nmodId=\"tac\"\nversion=\"1.2.0-hotfix\"\n"
+        "[[dependencies.tac]]\nmodId=\"minecraft\"\ntype=\"required\"\n"
+        "versionRange=\"[1.20.1,1.20.1]\"\n",
+    )
+    dep_jar(
+        "spells.jar",
+        "[[mods]]\nmodId=\"irons_spellbooks\"\n"
+        "[[dependencies.irons_spellbooks]]\nmodId=\"irons_lib\"\n"
+        "type=\"required\"\nversionRange=\"[1.20.1-2,1.20.1-3]\"\n",
+    )
+    dep_jar(
+        "geckolib.jar",
+        "[[mods]]\nmodId=\"geckolib\"\nversion=\"4.8.4\"\n"
+        "[[dependencies.geckolib]]\nmodId=\"geckoanimfix\"\ntype=\"optional\"\n"
+        "versionRange=\"[9,)\"\n",
+    )
+    dep_jar(
+        "geckoanimfix.jar",
+        "[[mods]]\nmodId=\"geckoanimfix\"\nversion=\"1.0.0\"\n",
+    )
+    dep_jar(
+        "gooddep.jar",
+        "[[mods]]\nmodId=\"gooddep\"\nversion=\"2.0\"\n"
+        "[[dependencies.gooddep]]\nmodId=\"tac\"\ntype=\"required\"\n"
+        "versionRange=\"[1, )\"\n",
+    )
+    dep_findings = doctor.scan(dep_dir, "1.20.1", "forge")
+    dtexts = [f["text"] for f in dep_findings]
+    assert any("irons_lib" in t for t in dtexts), dtexts
+    assert any("tac" in t and "1.2.0-hotfix" in t for t in dtexts), dtexts
+    assert any("geckoanimfix" in t for t in dtexts), dtexts
+    dinfo = {t: f for f, t in ((f, f["text"][:30]) for f in dep_findings)}
+    tac_f = [f for f in dep_findings if "1.2.0-hotfix" in f["text"] and "требует" in f["text"]]
+    assert tac_f and tac_f[0]["fix"] == ["tacaddon.jar"], dep_findings
+    missing_f = [f for f in dep_findings if "irons_lib" in f["text"]]
+    assert missing_f and missing_f[0]["fix"] == [], missing_f
+    fixed_d, rem_d = doctor.autofix(dep_dir, "1.20.1", "forge")
+    assert "tacaddon.jar" in [f for f, _ in fixed_d], fixed_d
+    assert "geckoanimfix.jar" in [f for f, _ in fixed_d], fixed_d
+    errs_r = [f for f in rem_d if f["level"] == "error"]
+    assert len(errs_r) == 1 and "irons_lib" in errs_r[0]["text"], rem_d
+    print("doctor checks OK (scan + autofix + deps)")
 
 
 def test_elyby_error_path():

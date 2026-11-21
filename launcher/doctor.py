@@ -1,5 +1,6 @@
 """«Лекарь» — предзапусковая проверка модов: дубли, несовместимости,
-чужие загрузчики, повреждённые jar и брошенные моды.
+чужие загрузчики, повреждённые jar, зависимости (не хватает мода / версия
+не подходит) и брошенные моды.
 
 Без внешних баз знаний: всё читается прямо из jar (mods.toml /
 fabric.mod.json) плюс маленькая таблица известных самых плохих пар.
@@ -17,6 +18,13 @@ _NUM = re.compile(r"\d+")
 
 _RENDER_MODS = {"embeddium", "oculus", "rubidium", "sodium", "magnesium", "radium"}
 
+# id зависимостей, которые не существуют как jar в папке mods
+_SYSTEM_IDS = {
+    "minecraft", "java", "javafml", "fml", "forge", "minecraftforge",
+    "neoforge", "fabricloader", "fabric", "fabric-api", "quilt_loader",
+    "quilted_fabric_api", "forgeconfig", "registryentryutils",
+}
+
 _ADVICE = {
     "rubidium": (
         "Rubidium заброшен и вызывает сбои — используй Embeddium "
@@ -27,14 +35,20 @@ _ADVICE = {
         "GeckoLibOculusCompat больше не нужен: GeckoLib для 1.20.1+ "
         "уже содержит поддержку Iris/Oculus. Удали этот файл."
     ),
+    "geckoanimfix": (
+        "GeckoLibOculusCompat (geckoanimfix) больше не нужен: GeckoLib "
+        "для 1.20.1+ уже содержит поддержку Iris/Oculus. Удали этот файл."
+    ),
 }
+
+BAD_FILE_PATTERNS = ("rubidium",)
 
 
 def _vt(s):
     return tuple(int(x) for x in _NUM.findall(s or ""))
 
 
-def _one_ok(vt, r):
+def _one_ok(vt, r, ver):
     if r[0] in "([":
         body = r.strip("[]()")
         if "," in body:
@@ -45,13 +59,17 @@ def _one_ok(vt, r):
             exact = True
         lo_t = _vt(lo_s)
         hi_t = _vt(hi_s)
+        if not exact and lo_t and hi_t and lo_t == hi_t:
+            exact = True
         if lo_t:
             if r[0] == "(" and vt <= lo_t:
                 return False
             if r[0] != "(" and vt < lo_t:
                 return False
         if exact:
-            return vt[: len(lo_t)] == lo_t
+            return ver == lo_s or (
+                vt[: len(lo_t)] == lo_t and not re.search(r"[A-Za-z]", ver)
+            )
         if r.endswith(")"):
             return vt < hi_t if hi_t else True
         if r.endswith("]"):
@@ -73,13 +91,13 @@ def _one_ok(vt, r):
     return not t or vt[: len(t)] == t or vt >= t
 
 
-def _range_ok(vt, r):
+def _range_ok(vt, r, ver=""):
     if not r or r == "*":
         return True
     if r[0] not in "([":
         toks = r.split()
-        return all(_one_ok(vt, t) for t in (toks or [r]))
-    return _one_ok(vt, r)
+        return all(_one_ok(vt, t, ver) for t in (toks or [r]))
+    return _one_ok(vt, r, ver)
 
 
 def version_ok(version, rng):
@@ -89,15 +107,14 @@ def version_ok(version, rng):
     vt = _vt(version)
     if not vt:
         return True
-    return any(_range_ok(vt, alt.strip()) for alt in rng.split("||"))
+    return any(_range_ok(vt, alt.strip(), version) for alt in rng.split("||"))
 
 
 def _forge_toml(txt):
-    ids = []
-    mc_range = None
-    optional = False
+    out = {"ids": [], "mc_range": None, "version": None, "deps": []}
     section = None
     dep_target = None
+    optional = False
     for raw in txt.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -122,30 +139,38 @@ def _forge_toml(txt):
         m = re.match(r"modId\s*=\s*[\"']([^\"']+)[\"']", line)
         if m:
             if section == "mod":
-                ids.append(m.group(1))
+                out["ids"].append(m.group(1))
             elif section == "dep":
                 dep_target = m.group(1)
             continue
+        if section == "mod" and out["version"] is None:
+            m = re.match(r"version\s*=\s*[\"']([^\"']+)[\"']", line)
+            if m:
+                out["version"] = m.group(1)
+                continue
         if section == "dep" and re.match(r"(type|mandatory)\s*=", line):
-            optional = "optional" in line or not re.search(r"(required|mandatory|true)", line)
+            optional = "optional" in line or not re.search(
+                r"(required|mandatory|true)", line
+            )
             continue
         m = re.match(r"versionRange\s*=\s*[\"']([^\"']+)[\"']", line)
-        if (
-            m
-            and section == "dep"
-            and dep_target == "minecraft"
-            and mc_range is None
-            and not optional
-        ):
-            mc_range = m.group(1)
-    return ids, mc_range
+        if m and section == "dep" and dep_target and optional is not None:
+            rng = m.group(1)
+            if dep_target == "minecraft":
+                if out["mc_range"] is None and not optional:
+                    out["mc_range"] = rng
+                continue
+            out["deps"].append((dep_target, rng, not optional))
+    return out
 
 
-def read_info(path, loader_type):
+def read_info(path, loader_type=None):
     info = {
         "file": os.path.basename(path),
         "ids": [],
         "mc_range": None,
+        "version": None,
+        "deps": [],
         "broken": False,
         "fabric": False,
         "forge": False,
@@ -160,24 +185,39 @@ def read_info(path, loader_type):
                 toml_name = "META-INF/mods.toml"
             if toml_name:
                 info["forge"] = True
-                ids, rng = _forge_toml(z.read(toml_name).decode("utf-8", "replace"))
-                info["ids"].extend(i for i in ids if i)
-                info["mc_range"] = rng
+                d = _forge_toml(z.read(toml_name).decode("utf-8", "replace"))
+                info["ids"].extend(i for i in d["ids"] if i)
+                info["mc_range"] = d["mc_range"]
+                if d["version"] and "${" not in d["version"]:
+                    info["version"] = d["version"]
+                info["deps"] = d["deps"]
             if "fabric.mod.json" in names:
                 info["fabric"] = True
                 try:
-                    d = json.loads(z.read("fabric.mod.json").decode("utf-8", "replace"))
+                    d = json.loads(
+                        z.read("fabric.mod.json").decode("utf-8", "replace")
+                    )
                 except ValueError:
                     d = {}
                 mid = d.get("id")
                 if mid and str(mid) not in info["ids"]:
                     info["ids"].append(str(mid))
-                dep = (d.get("depends") or {}).get("minecraft")
-                dep = str(dep) if isinstance(dep, str) else None
-                info["mc_range"] = info["mc_range"] or dep
+                v = d.get("version")
+                if isinstance(v, str) and "${" not in v and not info["version"]:
+                    info["version"] = v
+                deps_raw = d.get("depends", {})
+                if isinstance(deps_raw, dict):
+                    for k, v in deps_raw.items():
+                        if isinstance(k, str) and k not in info["ids"]:
+                            rng = v if isinstance(v, (str, list)) else None
+                            info["deps"].append(
+                                (k, str(rng), True)
+                            )
             if "quilt.mod.json" in names and not info["ids"]:
                 try:
-                    d = json.loads(z.read("quilt.mod.json").decode("utf-8", "replace"))
+                    d = json.loads(
+                        z.read("quilt.mod.json").decode("utf-8", "replace")
+                    )
                 except ValueError:
                     d = {}
                 mid = (d.get("quilt_loader") or {}).get("id")
@@ -186,9 +226,6 @@ def read_info(path, loader_type):
     except (zipfile.BadZipFile, OSError):
         info["broken"] = True
     return info
-
-
-BAD_FILE_PATTERNS = ("rubidium",)
 
 
 def _trash_path(fn, tdir):
@@ -206,6 +243,76 @@ def _mtime(info, mods_dir):
         return os.path.getmtime(os.path.join(mods_dir, info["file"]))
     except OSError:
         return 0.0
+
+
+def _dep_findings(infos, by_id):
+    findings = []
+    ver_by_id = {}
+    ins_by_id = {}
+    for info in infos:
+        for mid in info["ids"]:
+            key = mid.lower()
+            ins_by_id.setdefault(key, info)
+            if info.get("version"):
+                ver_by_id.setdefault(key, info["version"])
+    for info in infos:
+        owner = info["ids"][0] if info["ids"] else info["file"]
+        for target, rng, required in info.get("deps") or []:
+            key = (target or "").lower()
+            if key in _SYSTEM_IDS or not key:
+                continue
+            installed = ins_by_id.get(key)
+            if not installed:
+                if required:
+                    findings.append(
+                        {
+                            "level": "error",
+                            "text": (
+                                "Моду %r нужен мод %r версии %s — его нет в mods. "
+                                "Найти можно в разделе «Моды» (или удали %s)"
+                                % (owner, target, rng, info["file"])
+                            ),
+                            "files": [info["file"]],
+                            "fix": [],
+                        }
+                    )
+                continue
+            if not rng:
+                continue
+            tver = ver_by_id.get(key) or ""
+            if not tver or "${" in tver:
+                continue
+            if not version_ok(tver, rng):
+                if required:
+                    findings.append(
+                        {
+                            "level": "error",
+                            "text": (
+                                "Несовместимость версий: %r требует %r %s, "
+                                "а стоит %s (%s). Обнови %s или поставь %r"
+                                % (
+                                    owner, target, rng, tver, installed["file"],
+                                    target, rng,
+                                )
+                            ),
+                            "files": [installed["file"], info["file"]],
+                            "fix": [info["file"]],
+                        }
+                    )
+                else:
+                    findings.append(
+                        {
+                            "level": "warn",
+                            "text": (
+                                "%r несовместим с %r (нужна %s, стоит %s) — "
+                                "рекомендую удалить %s"
+                                % (info["file"], target, rng, tver, target)
+                            ),
+                            "files": [info["file"], installed["file"]],
+                            "fix": [installed["file"]],
+                        }
+                    )
+    return findings
 
 
 def scan(mods_dir, game_version, loader_type="vanilla"):
@@ -240,7 +347,10 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
 
     for key in sorted(advised):
         files = [i["file"] for i in infos if key in (m.lower() for m in i["ids"])]
-        fix = [fn for fn in files if key == "geckoliboculuscompat"]
+        if key in ("geckoliboculuscompat", "geckoanimfix"):
+            fix = list(files)
+        else:
+            fix = []
         findings.append(
             {"level": "warn", "text": _ADVICE[key], "files": files, "fix": fix}
         )
@@ -283,17 +393,7 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                 }
             )
 
-    for info in infos:
-        rng = info.get("mc_range")
-        if rng and not version_ok(game_version, rng):
-            findings.append(
-                {
-                    "level": "error",
-                    "text": "%s не для Minecraft %s (нужна версия %s) — удали его или поменяй версию игры"
-                    % (info["file"], game_version or "?", rng),
-                    "files": [info["file"]],
-                }
-            )
+    findings.extend(_dep_findings(infos, by_id))
 
     if loader_type in ("forge", "neoforge"):
         for info in infos:
