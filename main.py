@@ -35,6 +35,9 @@ class App(ctk.CTk):
         super().__init__()
         config.ensure_dirs()
         self.settings = config.load_settings()
+        from launcher import http_util as _http
+
+        _http.use_mirror = bool(self.settings.get("mirror", True))
         self.title("SashaLauncher %s" % APP_VERSION)
         self.geometry("940x620")
         self.minsize(820, 540)
@@ -878,6 +881,22 @@ class App(ctk.CTk):
         )
         c1.pack(fill="x", padx=18, pady=(14, 10))
 
+        c4 = self._build_settings_card(
+            page, "СКАЧИВАНИЕ ЧЕРЕЗ ЗЕРКАЛО",
+            "Если файлы Minecraft качаются с ошибками сети — включай: "
+            "лаунчер будет пробовать зеркало bmclapi для серверов Mojang "
+            "(манифест, клиент, библиотеки, ресурсы).",
+        )
+        self.mirror_var = ctk.BooleanVar(
+            value=bool(self.settings.get("mirror", True))
+        )
+        ctk.CTkCheckBox(
+            c4, text="использовать зеркало", variable=self.mirror_var,
+            font=font(12), text_color=MUTED, fg_color=ACCENT,
+            hover_color=ACCENT_HOVER,
+        ).pack(anchor="w", padx=16, pady=(6, 14))
+        c4.pack(fill="x", padx=18, pady=10)
+
         c2 = self._build_settings_card(
             page, "JAVA",
             "Путь к java.exe (пусто — найти автоматически). Нужна Java 17+ для версий 1.17+ (adoptium.net)",
@@ -939,6 +958,10 @@ class App(ctk.CTk):
         self.settings["ram_gb"] = max(1, int(self.ram_var.get()))
         self.settings["java_path"] = self.java_entry.get().strip()
         self.settings["azure_client_id"] = self.client_entry.get().strip()
+        self.settings["mirror"] = bool(self.mirror_var.get())
+        from launcher import http_util as _http
+
+        _http.use_mirror = self.settings["mirror"]
         config.save_settings(self.settings)
         self._update_chips()
         self.set_status("Настройки сохранены ✓")

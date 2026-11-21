@@ -1,6 +1,8 @@
 import gzip
 import io
 import json
+import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -9,11 +11,73 @@ USER_AGENT = "SashaLauncher/vRelease (+minecraft-launcher)"
 
 CHUNK = 256 * 1024
 
+MIRRORS = {
+    "https://piston-meta.mojang.com/": "https://bmclapi2.bangbang93.com/",
+    "https://piston-data.mojang.com/": "https://bmclapi2.bangbang93.com/",
+    "https://launchermeta.mojang.com/": "https://bmclapi2.bangbang93.com/",
+    "https://launcher.mojang.com/": "https://bmclapi2.bangbang93.com/",
+    "https://resources.download.minecraft.net/":
+        "https://bmclapi2.bangbang93.com/assets/",
+    "https://libraries.minecraft.net/":
+        "https://bmclapi2.bangbang93.com/maven/",
+}
+
+use_mirror = True
+
 
 class HttpError(RuntimeError):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
+
+
+def _mirror(url):
+    for base, repl in MIRRORS.items():
+        if url.startswith(base):
+            return repl + url[len(base):]
+    return None
+
+
+def _is_network_error(e):
+    if isinstance(e, urllib.error.HTTPError):
+        return False
+    return isinstance(
+        e, (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError,
+            OSError)
+    )
+
+
+def _urlopen_retry(url, req, timeout, attempts=3):
+    urls = [url]
+    m = _mirror(url)
+    if m and use_mirror:
+        urls.append(m)
+    last = None
+    for u in urls:
+        for i in range(attempts):
+            r = req if u == url else urllib.request.Request(
+                u, headers=dict(req.headers), data=req.data,
+                method=req.get_method(),
+            )
+            try:
+                r.headers.pop("Content-length", None)
+            except Exception:
+                pass
+            try:
+                return urllib.request.urlopen(r, timeout=timeout)
+            except urllib.error.HTTPError:
+                raise
+            except BaseException as e:
+                if not _is_network_error(e):
+                    raise
+                last = e
+                if i < attempts - 1:
+                    time.sleep([1, 3, 6][min(i, 2)])
+    host = urllib.parse.urlsplit(url).netloc
+    raise HttpError(
+        0, "Сеть: %s не отвечает (%d попыток, зеркало тоже): %s"
+        % (host, attempts * len(urls), last)
+    )
 
 
 def request_json(url, method="GET", body=None, headers=None, timeout=30):
@@ -26,7 +90,7 @@ def request_json(url, method="GET", body=None, headers=None, timeout=30):
         hdrs["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen_retry(url, req, timeout) as resp:
             raw = resp.read()
             if resp.headers.get("Content-Encoding") == "gzip" or raw[:2] == b"\x1f\x8b":
                 raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
@@ -52,7 +116,7 @@ def request_form(url, fields, timeout=30):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen_retry(url, req, timeout) as resp:
             return json.loads(resp.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
         detail = ""
@@ -80,7 +144,7 @@ def download(url, dest, progress=None, sha1=None, timeout=60, headers=None):
     done = 0
     total = None
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen_retry(url, req, timeout) as resp:
             length = resp.headers.get("Content-Length")
             if length:
                 total = int(length)

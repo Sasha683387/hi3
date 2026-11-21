@@ -29,17 +29,24 @@ def download_all(progress, seen=None):
     """
     from . import modrinth
 
+    import time
+
     ms = mods()
     seen = set() if seen is None else seen
     failed = []
     total = len(ms)
     for i, m in enumerate(ms, 1):
         progress(i, total, m.get("slug", "?"))
-        try:
-            modrinth.install(
-                m["project_id"], PACK_MINECRAFT, PACK_LOADER, config.MODS_DIR,
-                seen=seen,
-            )
-        except Exception:
-            failed.append(m.get("slug", "?"))
+        for attempt in range(2):
+            try:
+                modrinth.install(
+                    m["project_id"], PACK_MINECRAFT, PACK_LOADER, config.MODS_DIR,
+                    seen=seen,
+                )
+                break
+            except Exception:
+                if attempt == 0:
+                    time.sleep(2)
+                else:
+                    failed.append(m.get("slug", "?"))
     return failed
