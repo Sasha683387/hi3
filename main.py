@@ -7,7 +7,7 @@ import webbrowser
 import customtkinter as ctk
 
 from launcher import __version__ as APP_VERSION
-from launcher import accounts, config, elyby, fabric, installer, microsoft, offline, runner, versions
+from launcher import accounts, config, elyby, fabric, installer, microsoft, modrinth, offline, runner, versions
 
 ctk.set_appearance_mode("dark")
 
@@ -42,6 +42,7 @@ class App(ctk.CTk):
 
         self.proc = None
         self.busy = False
+        self.busy_mod = False
         self.ui_queue = queue.Queue()
 
         self.grid_columnconfigure(1, weight=1)
@@ -55,12 +56,14 @@ class App(ctk.CTk):
 
         self.pages = {}
         self._page_play = self._build_play_page()
+        self._page_mods = self._build_mods_page()
         self._page_files = self._build_files_page()
         self._page_account = self._build_account_page()
         self._page_settings = self._build_settings_page()
         self._page_console = self._build_console_page()
         for name, page in [
             ("Играть", self._page_play),
+            ("Моды", self._page_mods),
             ("Файлы", self._page_files),
             ("Аккаунт", self._page_account),
             ("Настройки", self._page_settings),
@@ -97,7 +100,7 @@ class App(ctk.CTk):
 
         self.nav_buttons = {}
         for i, name in enumerate(
-            ["Играть", "Файлы", "Аккаунт", "Настройки", "Консоль"], start=1
+            ["Играть", "Моды", "Файлы", "Аккаунт", "Настройки", "Консоль"], start=1
         ):
             b = ctk.CTkButton(
                 bar, text=name, height=40, corner_radius=10, anchor="w",
@@ -286,6 +289,127 @@ class App(ctk.CTk):
             self.version_box.set(last)
         elif ids:
             self.version_box.set(ids[0])
+
+    # ================= mods page =================
+
+    def _build_mods_page(self):
+        page = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+        page.grid_columnconfigure(0, weight=1)
+
+        search_card = ctk.CTkFrame(page, corner_radius=14, fg_color=CARD)
+        search_card.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 10))
+        ctk.CTkLabel(
+            search_card, text="ПОИСК МОДОВ · MODRINTH", font=font(13, True),
+            text_color=TEXT,
+        ).pack(anchor="w", padx=16, pady=(14, 0))
+        ctk.CTkLabel(
+            search_card,
+            text="Версия игры берётся с вкладки «Играть», Fabric должен быть включён. "
+                 "Зависимости (Fabric API и др.) скачаются сами.",
+            font=font(11.5), text_color=MUTED, justify="left", wraplength=620,
+        ).pack(anchor="w", padx=16)
+        row = ctk.CTkFrame(search_card, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=(10, 14))
+        self.mods_query = ctk.CTkEntry(
+            row, placeholder_text="Например: sodium, create, iris…", height=38,
+            corner_radius=10, fg_color="#262d3a", border_width=0, font=font(14),
+        )
+        self.mods_query.pack(side="left", fill="x", expand=True)
+        ctk.CTkButton(
+            row, text="🔍  Найти", height=38, width=110, corner_radius=10,
+            font=font(13), fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            text_color="#0f130e", command=self.on_mod_search,
+        ).pack(side="left", padx=(10, 0))
+
+        self.mod_status = ctk.CTkLabel(
+            page, text="", font=font(12), text_color=MUTED, anchor="w", justify="left"
+        )
+        self.mod_status.grid(row=1, column=0, sticky="ew", padx=20)
+
+        self.mods_results = ctk.CTkFrame(page, fg_color="transparent")
+        self.mods_results.grid(row=2, column=0, sticky="ew", padx=18, pady=(6, 18))
+        self._mod_rows = []
+        self._mod_page = page
+        return page
+
+    def on_mod_search(self):
+        query = self.mods_query.get().strip()
+        game = self.settings.get("last_version") or ""
+        if self.fabric_var.get():
+            self.mod_status.configure(text="Ищу по Modrinth...")
+            threading.Thread(
+                target=self._mods_search_thread, args=(query, game), daemon=True
+            ).start()
+        else:
+            self.mod_status.configure(
+                text="Моды работают с Fabric — включи галочку Fabric на вкладке «Играть»",
+                text_color="#d8a24a",
+            )
+
+    def _mods_search_thread(self, query, game):
+        try:
+            hits = modrinth.search(query, limit=10)
+            self.ui_queue.put(("mod_results", hits))
+        except Exception as e:
+            self.ui_queue.put(("mods_fail", "Поиск: %s" % e))
+
+    def _render_mod_results(self, hits):
+        for w in self.mods_results.winfo_children():
+            w.destroy()
+        if not hits:
+            ctk.CTkLabel(self.mods_results, text="ничего не найдено",
+                         font=font(12), text_color=MUTED).pack(anchor="w", padx=4)
+            return
+        for h in hits:
+            row = ctk.CTkFrame(self.mods_results, corner_radius=12, fg_color=CARD)
+            row.pack(fill="x", pady=4)
+            info = ctk.CTkFrame(row, fg_color="transparent")
+            info.pack(side="left", fill="x", expand=True, padx=14, pady=10)
+            ctk.CTkLabel(
+                info, text="%s   ·   ⬇ %s" % (h.get("title", "?"),
+                                              modrinth.fmt_downloads(h.get("downloads"))),
+                font=font(13, True), text_color=TEXT, anchor="w",
+            ).pack(anchor="w")
+            desc = (h.get("description") or "")[:110]
+            ctk.CTkLabel(info, text=desc, font=font(11.5), text_color=MUTED,
+                         anchor="w", justify="left", wraplength=540).pack(anchor="w")
+            ctk.CTkButton(
+                row, text="Скачать", width=100, height=36, corner_radius=9,
+                font=font(12), fg_color=ACCENT, hover_color=ACCENT_HOVER,
+                text_color="#0f130e",
+                command=lambda p=h["project_id"], t=h.get("title", "мод"):
+                    self.on_mod_install(p, t),
+            ).pack(side="right", padx=12)
+
+    def on_mod_install(self, project_id, title):
+        if self.busy_mod:
+            return
+        game = self.settings.get("last_version") or ""
+        if not game:
+            self.mod_status.configure(text="Сначала выбери версию на вкладке «Играть»",
+                                      text_color="#d8a24a")
+            return
+        if not self.fabric_var.get():
+            self.mod_status.configure(
+                text="Включи галочку Fabric на вкладке «Играть» (моды без лоадера не заведутся)",
+                text_color="#d8a24a",
+            )
+            return
+        loader = self.settings.get("loader") or "0.16.5"
+        self.busy_mod = True
+        self.mod_status.configure(text="Скачиваю %s (версия игры %s)..." % (title, game),
+                                  text_color=MUTED)
+        threading.Thread(
+            target=self._mod_install_thread,
+            args=(project_id, game, loader, title), daemon=True,
+        ).start()
+
+    def _mod_install_thread(self, project_id, game, loader, title):
+        try:
+            names = modrinth.install(project_id, game, loader, config.MODS_DIR)
+            self.ui_queue.put(("mod_done", (title, names)))
+        except Exception as e:
+            self.ui_queue.put(("mods_fail", "%s: %s" % (title, e)))
 
     # ================= files page =================
 
@@ -570,7 +694,7 @@ class App(ctk.CTk):
         row.pack(fill="x", padx=16, pady=(6, 16))
         self.ram_var = ctk.DoubleVar(value=float(self.settings.get("ram_gb") or 4))
         self.ram_slider = ctk.CTkSlider(
-            row, from_=1, to=16, variable=self.ram_var,
+            row, from_=1, to=32, variable=self.ram_var,
             button_color=ACCENT, progress_color=ACCENT_HOVER,
             button_hover_color=ACCENT_HOVER, height=22,
         )
@@ -727,7 +851,15 @@ class App(ctk.CTk):
                         raise ValueError(
                             "Выбери версию Fabric loader рядом с галочкой Fabric"
                         )
-                    version_id = fabric.profile(self.settings["last_version"], loader)["id"]
+                    try:
+                        version_id = fabric.profile(
+                            self.settings["last_version"], loader
+                        )["id"]
+                    except Exception:
+                        raise ValueError(
+                            "Fabric не поддерживает версию %s — выбери релиз 1.14+"
+                            % self.settings["last_version"]
+                        ) from None
                     self.ui_queue.put(("prog", ("Fabric", 0, 1, version_id)))
                 active = self._ensure_token(acc)
                 meta = installer.install_version(
@@ -781,6 +913,22 @@ class App(ctk.CTk):
                     self.loader_box.configure(values=payload)
                     last = self.settings.get("loader")
                     self.loader_box.set(last if last in payload else payload[0])
+                elif kind == "mod_results":
+                    self.mod_status.configure(
+                        text="Нашёл %d модов — жми «Скачать»" % len(payload)
+                    )
+                    self._render_mod_results(payload)
+                elif kind == "mod_done":
+                    title, names = payload
+                    self.busy_mod = False
+                    self.mod_status.configure(
+                        text="✔ %s установлен: %s"
+                        % (title, ", ".join(names) if names else "?")
+                    )
+                    self.refresh_files()
+                elif kind == "mods_fail":
+                    self.busy_mod = False
+                    self.mod_status.configure(text=str(payload), text_color="#d8a24a")
                 elif kind == "versions_fail":
                     self.set_status("Сеть: не получил список версий (%s)" % payload[:80])
                 elif kind == "prog":

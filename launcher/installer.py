@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from . import config, http_util, versions
 
 RESOURCES_BASE = "https://resources.download.minecraft.net"
-WORKERS = 10
+WORKERS = 24
 
 
 class Cancelled(RuntimeError):

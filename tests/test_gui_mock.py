@@ -163,7 +163,7 @@ def main():
                 fn()
             time.sleep(interval)
 
-    page_names = ["Аккаунт", "Настройки", "Консоль", "Играть", "Аккаунт"]
+    page_names = ["Аккаунт", "Настройки", "Консоль", "Играть", "Моды", "Файлы", "Аккаунт"]
     for name in page_names:
         app.show_page(name)
 
@@ -208,7 +208,20 @@ def main():
     assert app.play_btn._cfg.get("text") != "ЗАПУСК..." or True
     app._play_done()
 
-    print("GUI MOCK TEST PASSED: startup, all pages, all logins, play flow")
+    # mods page: render + queue handlers, no network
+    app.show_page("Моды")
+    app.fabric_var.set(True)
+    app._render_mod_results([])
+    app._render_mod_results(
+        [{"title": "Sodium", "project_id": "AABBCCDD",
+          "description": "fast rendering", "downloads": 1234567}]
+    )
+    app.ui_queue.put(("mods_fail", "тест-ошибка"))
+    app.ui_queue.put(("mod_done", ("Sodium", ["sodium-fabric.jar"])))
+    app._drain_queue()
+    assert app.busy_mod is False
+
+    print("GUI MOCK TEST PASSED: startup, all pages, all logins, play flow, mods page")
 
 
 def accounts_selected_name():
