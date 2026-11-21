@@ -3,9 +3,12 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import tarfile
 import threading
+import zipfile
 
-from . import config, elyby
+from . import config, elyby, http_util
 from . import __version__ as LAUNCHER_VER
 
 
@@ -13,33 +16,125 @@ class JavaNotFound(RuntimeError):
     pass
 
 
-def find_java(preferred=""):
+def runtime_dir(major):
+    return os.path.join(config.APP_DIR, "runtime", "jdk-%d" % major)
+
+
+def installed_runtime(major):
+    d = runtime_dir(major)
+    if not os.path.isdir(d):
+        return None
+    binname = "java.exe" if os.name == "nt" else "java"
+    import glob
+
+    hits = sorted(
+        glob.glob(os.path.join(d, "**", "bin", binname), recursive=True)
+    )
+    return hits[0] if hits else None
+
+
+def ensure_java(major, log=None):
+    """Находит или скачивает Temurin JRE нужной версии. Возвращает путь к java."""
+    if log is None:
+        log = lambda m: None
+    rt = installed_runtime(major)
+    if rt:
+        return rt
+    import platform
+
+    arch = (
+        "aarch64"
+        if platform.machine().lower() in ("arm64", "aarch64")
+        else "x64"
+    )
+    osname = (
+        "windows"
+        if os.name == "nt"
+        else ("mac" if sys.platform == "darwin" else "linux")
+    )
+    url = (
+        "https://api.adoptium.net/v3/assets/latest/%d/hotspot"
+        "?architecture=%s&image_type=jre&os=%s" % (major, arch, osname)
+    )
+    log("ищу Temurin JRE %d (%s/%s)…" % (major, osname, arch))
+    data = http_util.request_json(url, timeout=30)
+    pkg = ((data or [{}])[0].get("binary") or {}).get("package") or {}
+    link = pkg.get("link")
+    name = pkg.get("name") or ("temurin-%d.zip" % major)
+    if not link:
+        raise JavaNotFound(
+            "Adoptium не вернул сборку Java %d для %s/%s" % (major, osname, arch)
+        )
+    base = runtime_dir(major)
+    os.makedirs(base, exist_ok=True)
+    dest = os.path.join(base, name)
+    log("качаю %s…" % name)
+    http_util.download(link, dest)
+    log("распаковываю…")
+    if dest.lower().endswith(".zip"):
+        with zipfile.ZipFile(dest) as z:
+            z.extractall(base)
+    else:
+        with tarfile.open(dest) as t:
+            t.extractall(base)
+    try:
+        os.remove(dest)
+    except OSError:
+        pass
+    rt = installed_runtime(major)
+    if not rt:
+        raise JavaNotFound("не нашёл java в распакованной JRE %d" % major)
+    log("Java %d готова ✓" % major)
+    return rt
+
+
+def java_candidates(preferred=""):
+    cands = []
     if preferred and os.path.isfile(preferred):
-        return preferred
+        cands.append(preferred)
     env = os.environ.get("JAVA_HOME", "")
     if env:
         cand = os.path.join(env, "bin", "java" + (".exe" if os.name == "nt" else ""))
         if os.path.isfile(cand):
-            return cand
+            cands.append(cand)
     found = shutil.which("java")
     if found:
-        return found
+        cands.append(found)
     if os.name == "nt":
         import glob
 
         patterns = [
-            r"C:\Program Files\Java\*\bin\java.exe",
-            r"C:\Program Files (x86)\Java\*\bin\java.exe",
             r"C:\Program Files\Eclipse Adoptium\*\bin\java.exe",
             r"C:\Program Files\Microsoft\jdk*\bin\java.exe",
+            r"C:\Program Files\Java\*\bin\java.exe",
+            r"C:\Program Files (x86)\Java\*\bin\java.exe",
+            r"C:\Program Files\Amazon Corretto\*\bin\java.exe",
+            r"C:\Program Files\Zulu\zulu-*\bin\java.exe",
         ]
         for pat in patterns:
-            hits = sorted(glob.glob(pat))
-            if hits:
-                return hits[-1]
-    raise JavaNotFound(
-        "Java не найдена. Установи Java 17+ (Adoptium) или укажи путь в настройках."
-    )
+            cands.extend(sorted(glob.glob(pat), reverse=True))
+    out = []
+    for c in cands:
+        if c not in out and os.path.isfile(c):
+            out.append(c)
+    return out
+
+
+def find_java(preferred="", required_major=0):
+    cands = java_candidates(preferred)
+    if not cands:
+        raise JavaNotFound(
+            "Java не найдена. Установи Java 17+ (Adoptium) или укажи путь в настройках."
+        )
+    if required_major:
+        rt = installed_runtime(required_major)
+        if rt:
+            return rt
+        for c in cands:
+            m = java_major(c)
+            if m and m >= required_major:
+                return c
+    return cands[0]
 
 
 def java_major(java_path):
@@ -220,7 +315,8 @@ def build_command(meta, account, settings, ram_gb=None, os_key=None):
 
 
 def launch(meta, account, settings, ram_gb=None, on_stdout=None):
-    java = find_java(settings.get("java_path", ""))
+    required = required_java_major(meta)
+    java = find_java(settings.get("java_path", ""), required)
     cmd = [java] + build_command(meta, account, settings, ram_gb=ram_gb)
     proc = subprocess.Popen(
         cmd,

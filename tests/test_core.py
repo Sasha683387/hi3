@@ -356,6 +356,27 @@ def test_install_missing():
     print("doctor install_missing OK (mocked Modrinth + purge_failed)")
 
 
+def test_java_pick():
+    from launcher import runner
+
+    assert runner.required_java_major({"javaVersion": {"majorVersion": "17"}}) == 17
+    orig_cands, orig_major = runner.java_candidates, runner.java_major
+    try:
+        runner.java_candidates = lambda pref="": []
+        try:
+            runner.find_java("", 17)
+            raise AssertionError("expected JavaNotFound")
+        except runner.JavaNotFound:
+            pass
+        runner.java_candidates = lambda pref="": ["javaA", "javaB"]
+        runner.java_major = lambda p: {"javaA": 8, "javaB": 17}[p]
+        assert runner.find_java("", 17) == "javaB"
+        assert runner.find_java("", 8) == "javaA"
+    finally:
+        runner.java_candidates, runner.java_major = orig_cands, orig_major
+    print("java pick OK (compatible runtime preferred)")
+
+
 def test_elyby_error_path():
     from launcher import elyby
 
@@ -387,6 +408,7 @@ if __name__ == "__main__":
     test_loaders()
     test_doctor()
     test_install_missing()
+    test_java_pick()
     test_elyby_error_path()
     test_ms_invalid_client()
     print("ALL CORE TESTS PASSED")

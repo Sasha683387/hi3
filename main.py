@@ -1118,6 +1118,35 @@ class App(ctk.CTk):
                         raise ValueError(
                             "запуск отменён — исправь проблемы из «Лекаря» и жми «Играть» снова"
                         )
+                _req = runner.required_java_major(meta)
+                try:
+                    _jpath = runner.find_java(
+                        self.settings.get("java_path", ""), _req
+                    )
+                    _jmajor = runner.java_major(_jpath)
+                except runner.JavaNotFound:
+                    _jpath, _jmajor = "", 0
+                if _jmajor < _req and self.settings.get("auto_java", True):
+                    try:
+                        _jpath = runner.ensure_java(
+                            _req,
+                            log=lambda m: self.ui_queue.put(
+                                ("doctor_dep", "[java] " + m)
+                            ),
+                        )
+                        _jmajor = runner.java_major(_jpath)
+                    except Exception as _je:
+                        self.ui_queue.put(
+                            ("doctor_dep", "[java] не смог скачать: %s" % _je)
+                        )
+                        _jpath, _jmajor = "", 0
+                if _jmajor < _req:
+                    raise ValueError(
+                        "Для этой версии нужна Java %d+, а найдена Java %s (%s). "
+                        "Установи Temurin %d с adoptium.net и укажи путь к java.exe "
+                        "в Настройках (или оставь поле пустым — лаунчер сам найдёт)."
+                        % (_req, _jmajor or "?", _jpath or "не найдена", _req)
+                    )
                 self.ui_queue.put(("launching", version_id))
                 self.proc = runner.launch(
                     meta, active, self.settings,

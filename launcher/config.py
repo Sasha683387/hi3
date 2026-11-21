@@ -23,6 +23,7 @@ ICONS_DIR = os.path.join(APP_DIR, "icons")
 DEFAULT_SETTINGS = {
     "ram_gb": 4,
     "java_path": "",
+    "auto_java": True,
     "azure_client_id": "",
     "snapshots": False,
     "last_version": "",
