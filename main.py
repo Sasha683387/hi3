@@ -25,7 +25,9 @@ DANGER_HOVER = "#a34747"
 
 
 def font(size, bold=False):
-    return ctk.CTkFont("Segoe UI", size=size, weight="bold" if bold else "normal")
+    return ctk.CTkFont(
+        "Segoe UI", size=int(round(size)), weight="bold" if bold else "normal"
+    )
 
 
 class App(ctk.CTk):
