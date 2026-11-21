@@ -329,7 +329,7 @@ def _dep_findings(infos, by_id):
                             "level": "error",
                             "text": (
                                 "Моду %r нужен мод %r версии %s — его нет в mods. "
-                                "Лекарь попробует поставить его сам (или удали %s)"
+                                "Поставь его вручную с Modrinth/CurseForge или удали %s"
                                 % (owner, target, rng, info["file"])
                             ),
                             "files": [info["file"]],

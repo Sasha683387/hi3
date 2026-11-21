@@ -1100,14 +1100,19 @@ class App(ctk.CTk):
                         use_loader or "vanilla",
                     )
                     self.ui_queue.put(("doctor_fixed", fixed))
-                    if findings:
-                        _dep, _fail, findings = doctor.install_missing(
+                    missing_ids = set()
+                    for f in findings:
+                        mt = f.get("missing")
+                        mt = [mt] if isinstance(mt, str) else (mt or [])
+                        missing_ids |= set(mt)
+                    if missing_ids:
+                        fixed2, findings = doctor.purge_failed(
                             config.MODS_DIR,
                             self.settings.get("last_version") or "",
                             use_loader or "vanilla",
-                            log=lambda m: self.ui_queue.put(("doctor_dep", m)),
+                            list(missing_ids),
                         )
-                        self.ui_queue.put(("doctor_dep_fail", _fail))
+                        self.ui_queue.put(("doctor_fixed", fixed2))
                 if findings:
                     self._doctor_answer = False
                     self._doctor_evt.clear()
@@ -1324,36 +1329,19 @@ class App(ctk.CTk):
         gv = self.settings.get("last_version") or ""
         ld = self._doctor_loader()
         try:
-            self.set_status("Лекарь: ставлю недостающие зависимости с Modrinth…")
+            self.set_status("Лекарь: чищу проблемные моды…")
             fixed, findings = doctor.autofix(config.MODS_DIR, gv, ld)
             self.ui_queue.put(("doctor_fixed", fixed))
-            attempted = set()
-            fresh = set()
-            for _ in range(3):
-                missing_ids = set()
-                for f in findings:
-                    mt = f.get("missing")
-                    mt = [mt] if isinstance(mt, str) else (mt or [])
-                    for t in mt:
-                        if t.lower() not in attempted:
-                            missing_ids.add(t)
-                if not missing_ids:
-                    break
-                _deps, _fail, findings = doctor.install_missing(
-                    config.MODS_DIR, gv, ld, skip=attempted,
-                    log=lambda m: self.ui_queue.put(("doctor_dep", m)),
+            missing_ids = set()
+            for f in findings:
+                mt = f.get("missing")
+                mt = [mt] if isinstance(mt, str) else (mt or [])
+                missing_ids |= set(mt)
+            if missing_ids:
+                fixed2, findings = doctor.purge_failed(
+                    config.MODS_DIR, gv, ld, list(missing_ids)
                 )
-                attempted |= missing_ids
-                attempted |= {t for t, _w in _fail}
-                for _t, names in _deps:
-                    fresh |= set(names)
-                self.ui_queue.put(("doctor_dep_fail", _fail))
-                if _fail:
-                    fixed2, findings = doctor.purge_failed(
-                        config.MODS_DIR, gv, ld, [t for t, _w in _fail],
-                        fresh=fresh,
-                    )
-                    self.ui_queue.put(("doctor_fixed", fixed2))
+                self.ui_queue.put(("doctor_fixed", fixed2))
             if findings:
                 self.ui_queue.put(("doctor", findings))
                 return
