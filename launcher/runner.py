@@ -167,6 +167,7 @@ def build_command(meta, account, settings, ram_gb=None, os_key=None):
 
     ram = int(ram_gb or settings.get("ram_gb") or 4)
     jvm = [
+        "-XX:+UnlockExperimentalVMOptions",
         "-Xmx%dM" % (ram * 1024),
         "-Xms512M",
         "-XX:+UseG1GC",
