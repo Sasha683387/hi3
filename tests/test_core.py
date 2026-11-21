@@ -131,6 +131,62 @@ def test_loaders():
     print("forge/neoforge/quilt merges OK")
 
 
+def test_doctor():
+    import json as _json
+    import tempfile
+    import zipfile
+
+    from launcher import doctor
+
+    assert doctor.version_ok("1.20.1", "[1.20.1,)")
+    assert not doctor.version_ok("1.19.4", "[1.20.1,)")
+    assert doctor.version_ok("1.20.1", "*")
+    assert doctor.version_ok("47.4.2", "[47,)")
+    assert doctor.version_ok("1.20.1", ">=1.20")
+    assert not doctor.version_ok("1.20.1", "<1.20")
+    assert doctor.version_ok("1.20.1", "[1.19,2.0)")
+    assert not doctor.version_ok("1.20.1", "[1.19,1.20)")
+    assert doctor.version_ok("1.21.3", "1.21.x")
+
+    tmp = tempfile.mkdtemp(prefix="doctortest_")
+
+    def mod_jar(fn, toml=None, fmj=None):
+        p = os.path.join(tmp, fn)
+        with zipfile.ZipFile(p, "w") as z:
+            if toml:
+                z.writestr("META-INF/mods.toml", toml)
+            if fmj:
+                z.writestr("fabric.mod.json", _json.dumps(fmj))
+        return fn
+
+    base_toml = (
+        "[[mods]]\nmodId=\"examplemod\"\n"
+        "[[dependencies.examplemod]]\nmodId=\"minecraft\"\nversionRange=\"[1.20.1,)\"\n"
+    )
+    mod_jar("a.jar", toml=base_toml)
+    mod_jar("b.jar", toml=base_toml)
+    mod_jar("oldmod.jar", toml=base_toml.replace("examplemod", "oldmod"))
+    mod_jar("fabmod.jar", fmj={"id": "fabmod", "depends": {"minecraft": ">=1.19"}})
+    with open(os.path.join(tmp, "broken.jar"), "wb") as f:
+        f.write(b"not a zip")
+    with open(os.path.join(tmp, "OptiFine_1.20.1.jar"), "wb") as f:
+        f.write(b"")
+
+    texts_a = [f["text"] for f in doctor.scan(tmp, "1.20.1", "forge")]
+    assert any("examplemod" in t and "Дубль" in t for t in texts_a), texts_a
+    assert any("поврежд" in t or "OptiFine" in t.lower() for t in texts_a), texts_a
+    assert any("fabmod" in t and "Fabric-мод" in t for t in texts_a), texts_a
+
+    texts_b = [f["text"] for f in doctor.scan(tmp, "1.19.4", "fabric")]
+    assert any("oldmod" in t and "1.19.4" in t for t in texts_b), texts_b
+    assert any("a.jar" in t and "Forge-мод" in t for t in texts_b), texts_b
+    assert not any("fabmod" in t for t in texts_b), texts_b
+
+    texts_c = [f["text"] for f in doctor.scan(tmp, "1.20.1", "fabric")]
+    assert any("Forge-мод" in t for t in texts_c), texts_c
+    print("doctor checks OK")
+
+
 def test_elyby_error_path():
     from launcher import elyby
 
@@ -160,6 +216,7 @@ if __name__ == "__main__":
     test_manifest_and_meta()
     test_fabric()
     test_loaders()
+    test_doctor()
     test_elyby_error_path()
     test_ms_invalid_client()
     print("ALL CORE TESTS PASSED")

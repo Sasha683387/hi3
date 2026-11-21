@@ -16,7 +16,8 @@ CTK_METHODS = (
     "configure cget winfo_children winfo_exists destroy focus_set lift tkraise "
     "grid_columnconfigure grid_rowconfigure columnconfigure rowconfigure bind "
     "unbind after cancel after_cancel update update_idletasks clipboard_clear "
-    "clipboard_append bell withdraw deiconify iconify resizable"
+    "clipboard_append bell withdraw deiconify iconify resizable geometry "
+    "title protocol transient grab_set"
 ).split()
 
 SENTINEL = object()
@@ -240,6 +241,14 @@ def main():
 
     assert len(pack_mod.mods()) == 600, "modpack must contain 600 mods"
     assert pack_mod.PACK_MINECRAFT == "1.20.1" and pack_mod.PACK_LOADER == "forge"
+
+    # doctor popup: queue handler + decision event
+    app.ui_queue.put(
+        ("doctor", [{"level": "error", "text": "тест-ошибка", "files": []}])
+    )
+    app._drain_queue()
+    app._doctor_decide(True)
+    assert app._doctor_evt.is_set() and app._doctor_answer is True
 
     print("GUI MOCK TEST PASSED: startup, all pages, all logins, play flow, mods page")
 

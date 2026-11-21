@@ -10,7 +10,7 @@ import webbrowser
 import customtkinter as ctk
 
 from launcher import __version__ as APP_VERSION
-from launcher import accounts, config, elyby, fabric, installer, microsoft, modrinth, offline, runner, updater, versions
+from launcher import accounts, config, doctor, elyby, fabric, installer, microsoft, modrinth, offline, runner, updater, versions
 
 ctk.set_appearance_mode("dark")
 
@@ -82,6 +82,8 @@ class App(ctk.CTk):
         self.show_page("Играть")
         self._loader_type_changed()
         self.after(250, self._drain_queue)
+        self._doctor_evt = threading.Event()
+        self._doctor_answer = False
         self.after(2500, self._auto_update, False)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._refresh_versions()
@@ -1076,6 +1078,21 @@ class App(ctk.CTk):
                         ("prog", (s, d, t, lbl))
                     ),
                 )
+                findings = doctor.scan(
+                    config.MODS_DIR,
+                    self.settings.get("last_version") or "",
+                    use_loader or "vanilla",
+                )
+                if findings:
+                    self._doctor_answer = False
+                    self._doctor_evt.clear()
+                    self.ui_queue.put(("doctor", findings))
+                    if not self._doctor_evt.wait(900):
+                        raise ValueError("запуск отменён — жми «Играть» ещё раз")
+                    if not self._doctor_answer:
+                        raise ValueError(
+                            "запуск отменён — исправь проблемы из «Лекаря» и жми «Играть» снова"
+                        )
                 self.ui_queue.put(("launching", version_id))
                 self.proc = runner.launch(
                     meta, active, self.settings,
@@ -1192,6 +1209,8 @@ class App(ctk.CTk):
                     self._play_done()
                 elif kind == "game":
                     self.log_line(payload)
+                elif kind == "doctor":
+                    self._show_doctor(payload)
                 elif kind == "update_status":
                     self.log_line("[обновление] %s" % payload)
                     self.set_status(str(payload))
@@ -1210,6 +1229,64 @@ class App(ctk.CTk):
         except queue.Empty:
             pass
         self.after(250, self._drain_queue)
+
+    # ================= лекарь (проверка перед запуском) =================
+
+    def _doctor_decide(self, ok):
+        self._doctor_answer = bool(ok)
+        self._doctor_evt.set()
+
+    def _show_doctor(self, findings):
+        errs = sum(1 for f in findings if f.get("level") == "error")
+        warns = len(findings) - errs
+        self.set_status(
+            "Лекарь: %d ошибок, %d предупреждений — смотри список" % (errs, warns)
+        )
+        for f in findings:
+            tag = "ОШИБКА" if f.get("level") == "error" else "предупреждение"
+            self.log_line("[лекарь][%s] %s" % (tag, f["text"]))
+        top = ctk.CTkToplevel(self)
+        top.title("Лекарь — проверка перед запуском")
+        top.geometry("660x560")
+        head = "Лекарь нашёл проблемы перед запуском"
+        if errs:
+            head += "\nСоветую исправить ошибки — они почти наверняка уронят игру"
+        else:
+            head += "\nКритичных ошибок нет, только предупреждения"
+        ctk.CTkLabel(
+            top,
+            text=head,
+            font=font(20, True),
+            justify="center",
+        ).pack(pady=(18, 8), padx=20)
+        box = ctk.CTkScrollableFrame(top, fg_color="#1a1214")
+        box.pack(fill="both", expand=True, padx=16, pady=6)
+        for f in findings:
+            ctk.CTkLabel(
+                box,
+                text=("⛔ " if f.get("level") == "error" else "⚠ ") + f["text"],
+                justify="left",
+                anchor="w",
+                wraplength=580,
+                text_color=("#ff6b6b" if f.get("level") == "error" else "#ffd75b"),
+            ).pack(fill="x", padx=8, pady=4)
+        btns = ctk.CTkFrame(top, fg_color="transparent")
+        btns.pack(fill="x", padx=16, pady=12)
+        ctk.CTkButton(
+            btns,
+            text="▶ Запустить всё равно",
+            fg_color="#2d5a3a",
+            hover_color="#376b46",
+            command=lambda: self._doctor_decide(True),
+        ).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(
+            btns,
+            text="Отмена",
+            fg_color="#5a2d2d",
+            hover_color="#6b3737",
+            command=lambda: self._doctor_decide(False),
+        ).pack(side="left")
+        top.protocol("WM_DELETE_WINDOW", lambda: self._doctor_decide(False))
 
     # ================= self-update =================
 
