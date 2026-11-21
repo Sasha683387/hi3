@@ -1,32 +1,39 @@
-"""Modrinth API v2: search mods and download with dependencies."""
+"""Modrinth API v2: search & install mods/plugins/resourcepacks/shaders/datapacks."""
 
 import json
 import os
 import urllib.parse
 
-from . import http_util
+from . import config, http_util
 
 API = "https://api.modrinth.com/v2"
 
 
-def search(query, limit=10, project_type="mod"):
+def search(query, limit=10, project_type="mod", game_version=None, loader=None,
+           offset=0):
     facets = [["project_type:%s" % project_type]]
-    url = "%s/search?index=relevance&limit=%d&query=%s&facets=%s" % (
+    if game_version:
+        facets.append(["versions:%s" % game_version])
+    if loader:
+        facets.append(["categories:%s" % loader])
+    url = "%s/search?index=relevance&limit=%d&offset=%d&query=%s&facets=%s" % (
         API,
         limit,
+        offset,
         urllib.parse.quote(query or ""),
         urllib.parse.quote(json.dumps(facets)),
     )
     return http_util.request_json(url, timeout=25).get("hits", [])
 
 
-def versions_for(project_id, game_version, loader="fabric"):
-    url = "%s/project/%s/version?game_versions=%s&loaders=%s" % (
+def versions_for(project_id, game_version, loader=None):
+    url = "%s/project/%s/version?game_versions=%s" % (
         API,
         project_id,
         urllib.parse.quote(json.dumps([game_version])),
-        urllib.parse.quote(json.dumps([loader])),
     )
+    if loader:
+        url += "&loaders=%s" % urllib.parse.quote(json.dumps([loader]))
     return http_util.request_json(url, timeout=25)
 
 
@@ -38,7 +45,7 @@ def _primary_file(version):
     return files[0] if files else None
 
 
-def build_plan(version, game_version, loader="fabric", seen=None, depth=0):
+def build_plan(version, game_version, loader=None, seen=None, depth=0):
     """Resolve version -> [(url, filename, label)] including required deps."""
     plan = []
     seen = seen if seen is not None else set()
@@ -76,9 +83,42 @@ def install(project_id, game_version, loader, dest_dir, seen=None):
     os.makedirs(dest_dir, exist_ok=True)
     names = []
     for url, fname, label in plan:
-        http_util.download(url, os.path.join(dest_dir, fname))
+        dest = os.path.join(dest_dir, fname)
+        if os.path.exists(dest) and os.path.getsize(dest) > 0:
+            continue
+        http_util.download(url, dest)
         names.append(fname)
     return names
+
+
+def install_from_version(version, game_version, loader, dest_dir, seen=None):
+    plan = build_plan(version, game_version, loader, seen=seen or set())
+    os.makedirs(dest_dir, exist_ok=True)
+    names = []
+    for url, fname, label in plan:
+        dest = os.path.join(dest_dir, fname)
+        if os.path.exists(dest) and os.path.getsize(dest) > 0:
+            continue
+        http_util.download(url, dest)
+        names.append(fname)
+    return names
+
+
+def icon(project_id, icon_url):
+    """Download+cache a project icon, return local path or None."""
+    if not icon_url:
+        return None
+    from . import config as _config
+
+    ext = os.path.splitext(icon_url.split("?")[0])[1] or ".png"
+    path = os.path.join(_config.ICONS_DIR, project_id + ext)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        return path
+    try:
+        http_util.download(icon_url, path)
+        return path
+    except Exception:
+        return None
 
 
 def fmt_downloads(n):

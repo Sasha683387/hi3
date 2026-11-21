@@ -213,19 +213,32 @@ def main():
     assert app.play_btn._cfg.get("text") != "ЗАПУСК..." or True
     app._play_done()
 
-    # mods page: render + queue handlers, no network
+    # mods page: render + queue handlers, no network installs
     app.show_page("Моды")
     app.loader_type.set("Fabric")
     app._loader_type_changed()
+    for label, _pt, _nl, _d in app.CONTENT_TYPES:
+        app.content_box.set(label)
+        app._current_content()
+    app.content_box.set("Моды")
     app._render_mod_results([])
     app._render_mod_results(
         [{"title": "Sodium", "project_id": "AABBCCDD",
-          "description": "fast rendering", "downloads": 1234567}]
+          "description": "fast rendering", "downloads": 1234567,
+          "icon_url": "https://example.com/icon.png"}]
     )
+    pump(2.0, 0.1)
     app.ui_queue.put(("mods_fail", "тест-ошибка"))
     app.ui_queue.put(("mod_done", ("Sodium", ["sodium-fabric.jar"])))
+    app.ui_queue.put(("modpack_prog", (5, 600, "entityculling")))
+    app.ui_queue.put(("modpack_done", ["badmod"]))
     app._drain_queue()
     assert app.busy_mod is False
+
+    from launcher import modpack as pack_mod
+
+    assert len(pack_mod.mods()) == 600, "modpack must contain 600 mods"
+    assert pack_mod.PACK_MINECRAFT == "1.20.1" and pack_mod.PACK_LOADER == "forge"
 
     print("GUI MOCK TEST PASSED: startup, all pages, all logins, play flow, mods page")
 

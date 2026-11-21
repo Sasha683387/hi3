@@ -236,6 +236,21 @@ class App(ctk.CTk):
         "Quilt": "quilt",
     }
 
+    CONTENT_TYPES = [
+        ("Моды", "mod", True, "mods"),
+        ("Плагины", "plugin", True, "plugins"),
+        ("Ресурспаки", "resourcepack", False, "rpacks"),
+        ("Шейдеры", "shader", False, "shaders"),
+        ("Датапаки", "datapack", False, "datapacks"),
+    ]
+    _DEST = {
+        "mods": config.MODS_DIR,
+        "plugins": config.PLUGINS_DIR,
+        "rpacks": config.RPACKS_DIR,
+        "shaders": config.SHADERS_DIR,
+        "datapacks": config.DATAPACKS_DIR,
+    }
+
     def _current_loader_type(self):
         lt = getattr(self, "loader_type", None)
         return lt.get() if lt else "Ваниль"
@@ -336,56 +351,127 @@ class App(ctk.CTk):
         search_card = ctk.CTkFrame(page, corner_radius=14, fg_color=CARD)
         search_card.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 10))
         ctk.CTkLabel(
-            search_card, text="ПОИСК МОДОВ · MODRINTH", font=font(13, True),
+            search_card, text="MODRINTH · ПОИСК КОНТЕНТА", font=font(13, True),
             text_color=TEXT,
         ).pack(anchor="w", padx=16, pady=(14, 0))
         ctk.CTkLabel(
             search_card,
-            text="Версия игры берётся с вкладки «Играть», там же выбери загрузчик "
-                 "(Fabric / Forge / NeoForge / Quilt). Зависимости (Fabric API и др.) скачаются сами.",
+            text="Моды и плагины требуют загрузчик (Fabric / Forge / NeoForge / Quilt) "
+                 "на вкладке «Играть». Ресурспаки, шейдеры и датапаки ставятся на любую версию. "
+                 "Зависимости качаются сами.",
             font=font(11.5), text_color=MUTED, justify="left", wraplength=620,
         ).pack(anchor="w", padx=16)
         row = ctk.CTkFrame(search_card, fg_color="transparent")
         row.pack(fill="x", padx=16, pady=(10, 14))
+        self.content_box = ctk.CTkComboBox(
+            row, values=[t[0] for t in self.CONTENT_TYPES], width=140,
+            height=36, corner_radius=10, border_width=0, fg_color="#262d3a",
+            button_color=CARD_HOVER, button_hover_color="#323c4c",
+            dropdown_fg_color="#262d3a", dropdown_hover_color=CARD_HOVER,
+            text_color=TEXT, font=font(13), state="readonly",
+        )
+        self.content_box.set(self.CONTENT_TYPES[0][0])
+        self.content_box.pack(side="left", padx=(0, 10))
         self.mods_query = ctk.CTkEntry(
             row, placeholder_text="Например: sodium, create, iris…", height=38,
             corner_radius=10, fg_color="#262d3a", border_width=0, font=font(14),
         )
         self.mods_query.pack(side="left", fill="x", expand=True)
         ctk.CTkButton(
-            row, text="🔍  Найти", height=38, width=110, corner_radius=10,
+            row, text="🔎  Найти", height=38, width=110, corner_radius=10,
             font=font(13), fg_color=ACCENT, hover_color=ACCENT_HOVER,
             text_color="#0f130e", command=self.on_mod_search,
         ).pack(side="left", padx=(10, 0))
 
+        pack_card = ctk.CTkFrame(page, corner_radius=14, fg_color="#1a241d")
+        pack_card.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
+        ctk.CTkLabel(
+            pack_card, text="НАШ МОДПАК · 600 МОДОВ", font=font(13, True),
+            text_color="#7ee2a0",
+        ).pack(anchor="w", padx=16, pady=(12, 0))
+        ctk.CTkLabel(
+            pack_card,
+            text="SashaLauncher ModPack: топ-600 модов с Modrinth для Minecraft 1.20.1 + Forge. "
+                 "Ставится одним нажатием, уже скачанное не перекачивается.",
+            font=font(11.5), text_color=MUTED, justify="left", wraplength=620,
+        ).pack(anchor="w", padx=16)
+        prow = ctk.CTkFrame(pack_card, fg_color="transparent")
+        prow.pack(fill="x", padx=16, pady=(8, 14))
+        self.modpack_btn = ctk.CTkButton(
+            prow, text="⚙  Установить модпак", height=40, width=220,
+            corner_radius=10, font=font(13), fg_color=ACCENT,
+            hover_color=ACCENT_HOVER, text_color="#0f130e",
+            command=self.on_modpack_install,
+        )
+        self.modpack_btn.pack(side="left")
+        self.modpack_hint = ctk.CTkLabel(
+            prow, text="поставь игру 1.20.1 + Forge, потом жми кнопку",
+            font=font(11), text_color="#5f7a68",
+        )
+        self.modpack_hint.pack(side="left", padx=12)
+
         self.mod_status = ctk.CTkLabel(
             page, text="", font=font(12), text_color=MUTED, anchor="w", justify="left"
         )
-        self.mod_status.grid(row=1, column=0, sticky="ew", padx=20)
+        self.mod_status.grid(row=2, column=0, sticky="ew", padx=20)
 
         self.mods_results = ctk.CTkFrame(page, fg_color="transparent")
-        self.mods_results.grid(row=2, column=0, sticky="ew", padx=18, pady=(6, 18))
+        self.mods_results.grid(row=3, column=0, sticky="ew", padx=18, pady=(6, 18))
         self._mod_rows = []
         self._mod_page = page
         return page
 
+    def _current_content(self):
+        name = self.content_box.get() if getattr(self, "content_box", None) else "Моды"
+        for t in self.CONTENT_TYPES:
+            if t[0] == name:
+                return t
+        return self.CONTENT_TYPES[0]
+
+    def _apply_mod_icon(self, lbl, path):
+        try:
+            from PIL import Image
+
+            img = ctk.CTkImage(light_image=Image.open(path),
+                               dark_image=Image.open(path), size=(44, 44))
+            lbl.configure(image=img, text="")
+            lbl._ctk_image = img
+        except Exception:
+            pass
+
+    def _icon_thread(self, lbl, project_id, icon_url):
+        p = modrinth.icon(project_id, icon_url)
+        if p:
+            try:
+                self.after(0, self._apply_mod_icon, lbl, p)
+            except Exception:
+                pass
+
     def on_mod_search(self):
+        label, ptype, needs_loader, _dest = self._current_content()
         query = self.mods_query.get().strip()
         game = self.settings.get("last_version") or ""
-        if self.LOADER_KEYS.get(self._current_loader_type()):
-            self.mod_status.configure(text="Ищу по Modrinth...")
-            threading.Thread(
-                target=self._mods_search_thread, args=(query, game), daemon=True
-            ).start()
-        else:
+        loader_key = self.LOADER_KEYS.get(self._current_loader_type())
+        if needs_loader and not loader_key:
             self.mod_status.configure(
-                text="Выбери загрузчик (Fabric / Forge / NeoForge / Quilt) на вкладке «Играть» — моды без лоадера не заведутся",
+                text="%s требуют загрузчик — выбери Fabric / Forge / NeoForge / Quilt "
+                     "на вкладке «Играть»" % label,
                 text_color="#d8a24a",
             )
+            return
+        self.mod_status.configure(text="Ищу по Modrinth...")
+        threading.Thread(
+            target=self._mods_search_thread,
+            args=(query, game, ptype, loader_key if needs_loader else None),
+            daemon=True,
+        ).start()
 
-    def _mods_search_thread(self, query, game):
+    def _mods_search_thread(self, query, game, ptype, loader):
         try:
-            hits = modrinth.search(query, limit=10)
+            hits = modrinth.search(
+                query, limit=12, project_type=ptype,
+                game_version=game or None, loader=loader,
+            )
             self.ui_queue.put(("mod_results", hits))
         except Exception as e:
             self.ui_queue.put(("mods_fail", "Поиск: %s" % e))
@@ -399,54 +485,100 @@ class App(ctk.CTk):
             return
         for h in hits:
             row = ctk.CTkFrame(self.mods_results, corner_radius=12, fg_color=CARD)
-            row.pack(fill="x", pady=4)
+            row.pack(fill="x", pady=4, padx=2)
+            icon_lbl = ctk.CTkLabel(row, text="", width=52)
+            icon_lbl.pack(side="left", padx=(12, 0))
+            if h.get("icon_url"):
+                threading.Thread(
+                    target=self._icon_thread,
+                    args=(icon_lbl, h["project_id"], h["icon_url"]), daemon=True,
+                ).start()
             info = ctk.CTkFrame(row, fg_color="transparent")
-            info.pack(side="left", fill="x", expand=True, padx=14, pady=10)
+            info.pack(side="left", fill="x", expand=True, padx=12, pady=10)
             ctk.CTkLabel(
                 info, text="%s   ·   ⬇ %s" % (h.get("title", "?"),
                                               modrinth.fmt_downloads(h.get("downloads"))),
                 font=font(13, True), text_color=TEXT, anchor="w",
             ).pack(anchor="w")
-            desc = (h.get("description") or "")[:110]
+            desc = (h.get("description") or "")[:130]
             ctk.CTkLabel(info, text=desc, font=font(11.5), text_color=MUTED,
-                         anchor="w", justify="left", wraplength=540).pack(anchor="w")
+                         anchor="w", justify="left", wraplength=500).pack(anchor="w")
             ctk.CTkButton(
                 row, text="Скачать", width=100, height=36, corner_radius=9,
                 font=font(12), fg_color=ACCENT, hover_color=ACCENT_HOVER,
                 text_color="#0f130e",
-                command=lambda p=h["project_id"], t=h.get("title", "мод"):
+                command=lambda p=h["project_id"], t=h.get("title", "контент"):
                     self.on_mod_install(p, t),
             ).pack(side="right", padx=12)
 
     def on_mod_install(self, project_id, title):
         if self.busy_mod:
             return
+        label, ptype, needs_loader, dest = self._current_content()
         game = self.settings.get("last_version") or ""
+        loader_key = self.LOADER_KEYS.get(self._current_loader_type())
+        if not game and needs_loader:
+            self.mod_status.configure(text="Сначала выбери версию на вкладке «Играть»",
+                                      text_color="#d8a24a")
+            return
+        if needs_loader and not loader_key:
+            self.mod_status.configure(
+                text="Выбери загрузчик (Fabric / Forge / NeoForge / Quilt) на вкладке «Играть»",
+                text_color="#d8a24a",
+            )
+            return
         if not game:
             self.mod_status.configure(text="Сначала выбери версию на вкладке «Играть»",
                                       text_color="#d8a24a")
             return
-        loader_key = self.LOADER_KEYS.get(self._current_loader_type())
-        if not loader_key:
-            self.mod_status.configure(
-                text="Выбери загрузчик (Fabric / Forge / NeoForge / Quilt) на вкладке «Играть» (моды без лоадера не заведутся)",
-                text_color="#d8a24a",
-            )
-            return
         self.busy_mod = True
-        self.mod_status.configure(text="Скачиваю %s (версия игры %s)..." % (title, game),
+        self.mod_status.configure(text="Скачиваю %s (%s)..." % (title, label),
                                   text_color=MUTED)
         threading.Thread(
             target=self._mod_install_thread,
-            args=(project_id, game, loader_key, title), daemon=True,
+            args=(project_id, game, loader_key if needs_loader else None,
+                  self._DEST[dest], title),
+            daemon=True,
         ).start()
 
-    def _mod_install_thread(self, project_id, game, loader_key, title):
+    def _mod_install_thread(self, project_id, game, loader, dest, title):
         try:
-            names = modrinth.install(project_id, game, loader_key, config.MODS_DIR)
+            names = modrinth.install(project_id, game, loader, dest)
             self.ui_queue.put(("mod_done", (title, names)))
         except Exception as e:
             self.ui_queue.put(("mods_fail", "%s: %s" % (title, e)))
+
+    def on_modpack_install(self):
+        if self.busy_mod:
+            return
+        from launcher import modpack
+
+        try:
+            mods = modpack.mods()
+        except Exception as e:
+            self.mod_status.configure(text="Модпак не найден: %s" % e,
+                                      text_color="#d8a24a")
+            return
+        if not mods:
+            self.mod_status.configure(text="Список модов пуст", text_color="#d8a24a")
+            return
+        self.busy_mod = True
+        self.modpack_btn.configure(state="disabled")
+        self.mod_status.configure(
+            text="Модпак: ставлю %d модов (Minecraft %s + %s)..."
+                 % (len(mods), modpack.PACK_MINECRAFT, modpack.PACK_LOADER),
+            text_color=MUTED,
+        )
+        threading.Thread(target=self._modpack_thread, daemon=True).start()
+
+    def _modpack_thread(self):
+        from launcher import modpack
+
+        def progress(done, total, slug):
+            self.ui_queue.put(("modpack_prog", (done, total, slug)))
+
+        failed = modpack.download_all(progress)
+        self.ui_queue.put(("modpack_done", failed))
 
     # ================= files page =================
 
@@ -456,16 +588,18 @@ class App(ctk.CTk):
 
         defs = [
             ("mods", "МОДЫ", config.MODS_DIR,
-             ".jar файлы модов. Нужен Fabric: включи галочку Fabric на вкладке «Играть». "
-             "Шейдеры требуют мод Iris (для новых версий).", (".jar",)),
+             ".jar файлы модов. Ищи на вкладке «Моды» или кидай вручную — нужен "
+             "загрузчик (Fabric / Forge / …) на вкладке «Играть».", (".jar",)),
             ("rpacks", "РЕСУРСПАКИ", config.RPACKS_DIR,
              ".zip файлы. Включаются в игре: Настройки → Наборы ресурсов.", (".zip",)),
             ("shaders", "ШЕЙДЕРЫ", config.SHADERS_DIR,
-             ".zip пакеты шейдеров. Требуется Fabric + мод Iris: "
-             "modrinth.com/mod/iris. В игре: Настройки → Видео → Шейдеры.", (".zip",)),
-            ("datapacks", "ДАТАПАКИ", config.SAVES_DIR,
-             ".zip кладут в папку конкретного мира: saves/<твой мир>/datapacks. "
-             "Кнопка ниже открывает папку миров.", (".zip",)),
+             ".zip пакеты шейдеров. Нужен мод-шейдерлоадер (Iris / Oculus). "
+             "В игре: Настройки → Видео → Шейдеры.", (".zip",)),
+            ("datapacks", "ДАТАПАКИ", config.DATAPACKS_DIR,
+             ".zip кладутся в папку конкретного мира: saves/<твой мир>/datapacks. "
+             "Здесь — общая папка; Modrinth-поиск ставит сюда.", (".zip",)),
+            ("plugins", "ПЛАГИНЫ", config.PLUGINS_DIR,
+             ".jar плагины для серверов (Paper / Spigot). Для обычной игры не нужны.", (".jar",)),
         ]
         self.file_cards = {}
         for i, (key, title, folder, hint, ext) in enumerate(defs):
@@ -959,9 +1093,30 @@ class App(ctk.CTk):
                     self.loader_box.set(last if last in payload else payload[0])
                 elif kind == "mod_results":
                     self.mod_status.configure(
-                        text="Нашёл %d модов — жми «Скачать»" % len(payload)
+                        text="Нашёл %d позиций — жми «Скачать»" % len(payload)
                     )
                     self._render_mod_results(payload)
+                elif kind == "modpack_prog":
+                    done, total, slug = payload
+                    self.mod_status.configure(
+                        text="Модпак: %d из %d · %s" % (done, total, slug)
+                    )
+                elif kind == "modpack_done":
+                    self.busy_mod = False
+                    failed = payload
+                    self.modpack_btn.configure(state="normal")
+                    if failed:
+                        self.mod_status.configure(
+                            text="Модпак: готово, но не удалось: %s"
+                            % (", ".join(failed[:6]) + ("…" if len(failed) > 6 else "")),
+                            text_color="#d8a24a",
+                        )
+                    else:
+                        self.mod_status.configure(
+                            text="✔ Модпак установлен полностью!",
+                            text_color="#7ee2a0",
+                        )
+                    self.refresh_files()
                 elif kind == "mod_done":
                     title, names = payload
                     self.busy_mod = False
@@ -973,6 +1128,8 @@ class App(ctk.CTk):
                 elif kind == "mods_fail":
                     self.busy_mod = False
                     self.mod_status.configure(text=str(payload), text_color="#d8a24a")
+                    if getattr(self, "modpack_btn", None):
+                        self.modpack_btn.configure(state="normal")
                 elif kind == "versions_fail":
                     self.set_status("Сеть: не получил список версий (%s)" % payload[:80])
                 elif kind == "prog":
