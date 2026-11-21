@@ -896,11 +896,19 @@ class App(ctk.CTk):
         self.mirror_var = ctk.BooleanVar(
             value=bool(self.settings.get("mirror", True))
         )
+        self.doctor_var = ctk.BooleanVar(
+            value=bool(self.settings.get("doctor_autofix", True))
+        )
         ctk.CTkCheckBox(
             c4, text="использовать зеркало", variable=self.mirror_var,
             font=font(12), text_color=MUTED, fg_color=ACCENT,
             hover_color=ACCENT_HOVER,
-        ).pack(anchor="w", padx=16, pady=(6, 14))
+        ).pack(anchor="w", padx=16, pady=(6, 4))
+        ctk.CTkCheckBox(
+            c4, text="Лекарь сам удаляет проблемные моды", variable=self.doctor_var,
+            font=font(12), text_color=MUTED, fg_color=ACCENT,
+            hover_color=ACCENT_HOVER,
+        ).pack(anchor="w", padx=16, pady=(4, 14))
         c4.pack(fill="x", padx=18, pady=10)
 
         c2 = self._build_settings_card(
@@ -968,6 +976,7 @@ class App(ctk.CTk):
         self.settings["java_path"] = self.java_entry.get().strip()
         self.settings["azure_client_id"] = self.client_entry.get().strip()
         self.settings["mirror"] = bool(self.mirror_var.get())
+        self.settings["doctor_autofix"] = bool(self.doctor_var.get())
         from launcher import http_util as _http
 
         _http.use_mirror = self.settings["mirror"]
@@ -1083,6 +1092,14 @@ class App(ctk.CTk):
                     self.settings.get("last_version") or "",
                     use_loader or "vanilla",
                 )
+                if findings and self.settings.get("doctor_autofix", True):
+                    self.ui_queue.put(("doctor_fixing", len(findings)))
+                    fixed, findings = doctor.autofix(
+                        config.MODS_DIR,
+                        self.settings.get("last_version") or "",
+                        use_loader or "vanilla",
+                    )
+                    self.ui_queue.put(("doctor_fixed", fixed))
                 if findings:
                     self._doctor_answer = False
                     self._doctor_evt.clear()
@@ -1211,6 +1228,14 @@ class App(ctk.CTk):
                     self.log_line(payload)
                 elif kind == "doctor":
                     self._show_doctor(payload)
+                elif kind == "doctor_fixing":
+                    self.set_status("Лекарь: нашёл %d проблем — сам убираю…" % payload)
+                    self.log_line("[лекарь] нашёл %d проблем — чиню автоматически" % payload)
+                elif kind == "doctor_fixed":
+                    for fn, lvl in payload:
+                        self.log_line("[лекарь] убрал %s (%s) → trash" % (fn, lvl))
+                    if payload:
+                        self.set_status("Лекарь починил %d файлов ✓" % len(payload))
                 elif kind == "update_status":
                     self.log_line("[обновление] %s" % payload)
                     self.set_status(str(payload))
@@ -1236,6 +1261,33 @@ class App(ctk.CTk):
         self._doctor_answer = bool(ok)
         self._doctor_evt.set()
 
+    def _doctor_fix_and_run(self):
+        if getattr(self, "_doctor_win", None) is not None:
+            try:
+                self._doctor_win.destroy()
+            except Exception:
+                pass
+        self.set_status("Лекарь чинит файлы…")
+        threading.Thread(target=self._doctor_fix_thread, daemon=True).start()
+
+    def _doctor_fix_thread(self):
+        try:
+            fixed, findings = doctor.autofix(
+                config.MODS_DIR,
+                self.settings.get("last_version") or "",
+                self.LOADER_KEYS.get(self.settings.get("loader_type") or "")
+                or "vanilla",
+            )
+            self.ui_queue.put(("doctor_fixed", fixed))
+            if findings:
+                self.ui_queue.put(("doctor", findings))
+            else:
+                self.set_status("Лекарь: всё починил — запускаю ✓")
+                self._doctor_decide(True)
+        except Exception as e:
+            self.log_line("[лекарь] не смог починить сам: %s" % e)
+            self._doctor_decide(False)
+
     def _show_doctor(self, findings):
         errs = sum(1 for f in findings if f.get("level") == "error")
         warns = len(findings) - errs
@@ -1246,6 +1298,7 @@ class App(ctk.CTk):
             tag = "ОШИБКА" if f.get("level") == "error" else "предупреждение"
             self.log_line("[лекарь][%s] %s" % (tag, f["text"]))
         top = ctk.CTkToplevel(self)
+        self._doctor_win = top
         top.title("Лекарь — проверка перед запуском")
         top.geometry("660x560")
         head = "Лекарь нашёл проблемы перед запуском"
@@ -1274,8 +1327,15 @@ class App(ctk.CTk):
         btns.pack(fill="x", padx=16, pady=12)
         ctk.CTkButton(
             btns,
-            text="▶ Запустить всё равно",
+            text="🛠 Починить и запустить",
             fg_color="#2d5a3a",
+            hover_color="#376b46",
+            command=self._doctor_fix_and_run,
+        ).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(
+            btns,
+            text="▶ Запустить всё равно",
+            fg_color="#3a5546",
             hover_color="#376b46",
             command=lambda: self._doctor_decide(True),
         ).pack(side="left", padx=(0, 10))

@@ -184,7 +184,39 @@ def test_doctor():
 
     texts_c = [f["text"] for f in doctor.scan(tmp, "1.20.1", "fabric")]
     assert any("Forge-мод" in t for t in texts_c), texts_c
-    print("doctor checks OK")
+
+    mod_jar(
+        "rubidium-mc1.20.1-0.7.1.jar",
+        toml=base_toml.replace("examplemod", "rubidium"),
+    )
+    mod_jar(
+        "embeddium-0.3.3+mc1.20.1.jar",
+        toml=base_toml.replace("examplemod", "rubidium"),
+    )
+    mod_jar(
+        "geckolib-compat.jar",
+        toml=base_toml.replace("examplemod", "geckoliboculuscompat"),
+    )
+    mod_jar(
+        "wrongver.jar",
+        toml=base_toml.replace("examplemod", "wrongver").replace(
+            "[1.20.1,)", "[1.19,1.20)"
+        ),
+    )
+    fixed, remaining = doctor.autofix(tmp, "1.20.1", "forge")
+    names = [f for f, _ in fixed]
+    assert "rubidium-mc1.20.1-0.7.1.jar" in names, names
+    assert "embeddium-0.3.3+mc1.20.1.jar" not in names, names
+    assert "geckolib-compat.jar" in names, names
+    assert "wrongver.jar" in names, names
+    assert "broken.jar" in names, names
+    assert "fabmod.jar" not in names, names
+    assert ("a.jar" in names) != ("b.jar" in names), names
+    assert os.path.exists(
+        os.path.join(tmp, "embeddium-0.3.3+mc1.20.1.jar")
+    ), "embeddium must stay"
+    assert not any(f["level"] == "error" for f in remaining), remaining
+    print("doctor checks OK (scan + autofix)")
 
 
 def test_elyby_error_path():

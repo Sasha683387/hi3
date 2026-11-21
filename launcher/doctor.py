@@ -8,7 +8,10 @@ fabric.mod.json) плюс маленькая таблица известных �
 import json
 import os
 import re
+import shutil
 import zipfile
+
+from . import config
 
 _NUM = re.compile(r"\d+")
 
@@ -31,9 +34,7 @@ def _vt(s):
     return tuple(int(x) for x in _NUM.findall(s or ""))
 
 
-def _range_ok(vt, r):
-    if not r or r == "*":
-        return True
+def _one_ok(vt, r):
     if r[0] in "([":
         body = r.strip("[]()")
         if "," in body:
@@ -72,6 +73,15 @@ def _range_ok(vt, r):
     return not t or vt[: len(t)] == t or vt >= t
 
 
+def _range_ok(vt, r):
+    if not r or r == "*":
+        return True
+    if r[0] not in "([":
+        toks = r.split()
+        return all(_one_ok(vt, t) for t in (toks or [r]))
+    return _one_ok(vt, r)
+
+
 def version_ok(version, rng):
     rng = (rng or "").strip()
     if not rng or rng in ("*", "-", ""):
@@ -85,6 +95,7 @@ def version_ok(version, rng):
 def _forge_toml(txt):
     ids = []
     mc_range = None
+    optional = False
     section = None
     dep_target = None
     for raw in txt.splitlines():
@@ -101,10 +112,12 @@ def _forge_toml(txt):
             else:
                 section = None
             dep_target = None
+            optional = False
             continue
         if line.startswith("["):
             section = None
             dep_target = None
+            optional = False
             continue
         m = re.match(r"modId\s*=\s*[\"']([^\"']+)[\"']", line)
         if m:
@@ -113,8 +126,17 @@ def _forge_toml(txt):
             elif section == "dep":
                 dep_target = m.group(1)
             continue
+        if section == "dep" and re.match(r"(type|mandatory)\s*=", line):
+            optional = "optional" in line or not re.search(r"(required|mandatory|true)", line)
+            continue
         m = re.match(r"versionRange\s*=\s*[\"']([^\"']+)[\"']", line)
-        if m and section == "dep" and dep_target == "minecraft" and mc_range is None:
+        if (
+            m
+            and section == "dep"
+            and dep_target == "minecraft"
+            and mc_range is None
+            and not optional
+        ):
             mc_range = m.group(1)
     return ids, mc_range
 
@@ -166,6 +188,26 @@ def read_info(path, loader_type):
     return info
 
 
+BAD_FILE_PATTERNS = ("rubidium",)
+
+
+def _trash_path(fn, tdir):
+    base, ext = os.path.splitext(fn)
+    dst = os.path.join(tdir, fn)
+    n = 1
+    while os.path.exists(dst):
+        dst = os.path.join(tdir, "%s(%d)%s" % (base, n, ext))
+        n += 1
+    return dst
+
+
+def _mtime(info, mods_dir):
+    try:
+        return os.path.getmtime(os.path.join(mods_dir, info["file"]))
+    except OSError:
+        return 0.0
+
+
 def scan(mods_dir, game_version, loader_type="vanilla"):
     findings = []
     if not os.path.isdir(mods_dir):
@@ -182,6 +224,7 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                     "level": "error",
                     "text": "%s повреждён или это не jar — удали его или переустанови" % fn,
                     "files": [fn],
+                    "fix": [fn],
                 }
             )
 
@@ -197,10 +240,21 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
 
     for key in sorted(advised):
         files = [i["file"] for i in infos if key in (m.lower() for m in i["ids"])]
-        findings.append({"level": "warn", "text": _ADVICE[key], "files": files})
+        fix = [fn for fn in files if key == "geckoliboculuscompat"]
+        findings.append(
+            {"level": "warn", "text": _ADVICE[key], "files": files, "fix": fix}
+        )
 
     for key, group in sorted(by_id.items()):
         if len(group) > 1:
+            bad = [
+                i["file"]
+                for i in group
+                if any(p in i["file"].lower() for p in BAD_FILE_PATTERNS)
+            ]
+            if not bad or len(bad) == len(group):
+                newest = max(group, key=lambda i: (_mtime(i, mods_dir), i["file"]))
+                bad = [i["file"] for i in group if i is not newest]
             extra = (
                 " %s" % _ADVICE[key]
                 if key in _ADVICE
@@ -212,6 +266,20 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                     "text": "Дубль мода '%s': %s.%s"
                     % (key, ", ".join(i["file"] for i in group), extra),
                     "files": [i["file"] for i in group],
+                    "fix": bad,
+                }
+            )
+
+    for info in infos:
+        rng = info.get("mc_range")
+        if rng and not version_ok(game_version, rng):
+            findings.append(
+                {
+                    "level": "error",
+                    "text": "%s не для Minecraft %s (нужна версия %s) — удали его или поменяй версию игры"
+                    % (info["file"], game_version or "?", rng),
+                    "files": [info["file"]],
+                    "fix": [info["file"]],
                 }
             )
 
@@ -236,6 +304,7 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                         "text": "%s — это Fabric-мод, а запускаешь Forge: Forge просто не увидит его"
                         % info["file"],
                         "files": [info["file"]],
+                        "fix": [],
                     }
                 )
     elif loader_type in ("fabric", "quilt"):
@@ -247,6 +316,7 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                         "text": "%s — это Forge-мод, а запускаешь Fabric: Forge-моды не работают на Fabric"
                         % info["file"],
                         "files": [info["file"]],
+                        "fix": [],
                     }
                 )
 
@@ -260,6 +330,30 @@ def scan(mods_dir, game_version, loader_type="vanilla"):
                     "level": "error",
                     "text": "%s (OptiFine) несовместим с Oculus/Embeddium/Sodium — оставь что-то одно (для модпаков рекомендуется Oculus)" % info["file"],
                     "files": [info["file"]],
+                    "fix": [info["file"]],
                 }
             )
     return findings
+
+
+def autofix(mods_dir, game_version, loader_type="vanilla"):
+    """Убирает проблемные jar в корзину лаунчера и возвращает
+    (список удалённых [(файл, уровень)], оставшиеся замечания)."""
+    if not os.path.isdir(mods_dir):
+        return [], []
+    tdir = os.path.join(config.APP_DIR, "trash")
+    os.makedirs(tdir, exist_ok=True)
+    fixed = []
+    for f in scan(mods_dir, game_version, loader_type):
+        for fn in f.get("fix") or []:
+            src = os.path.join(mods_dir, fn)
+            if not os.path.isfile(src):
+                continue
+            try:
+                shutil.move(src, _trash_path(fn, tdir))
+                fixed.append((fn, f.get("level", "warn")))
+            except OSError:
+                pass
+    if not fixed:
+        return [], scan(mods_dir, game_version, loader_type)
+    return fixed, scan(mods_dir, game_version, loader_type)
